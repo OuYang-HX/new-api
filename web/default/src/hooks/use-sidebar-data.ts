@@ -155,6 +155,11 @@ export function useSidebarData(): SidebarData {
             activeUrls: ['/system-settings'],
             icon: Settings,
           },
+          {
+            title: t('Internal Token'),
+            url: '/internal-token',
+            icon: Key,
+          },
         ],
       },
     ],

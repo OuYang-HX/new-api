@@ -168,6 +168,29 @@ func applyHeaderOverridePlaceholders(template string, c *gin.Context, apiKey str
 		return clientHeaderValue, true, nil
 	}
 
+	// Resolve ${token:name} placeholders with internal token values
+	if strings.Contains(template, "${token:") {
+		// Find all ${token:xxx} patterns
+		for {
+			start := strings.Index(template, "${token:")
+			if start == -1 {
+				break
+			}
+			end := strings.Index(template[start:], "}")
+			if end == -1 {
+				break
+			}
+			end += start
+			name := template[start+7 : end] // extract name between ${token: and }
+			token, ok := service.GetTokenByName(name)
+			if ok && token != "" {
+				template = template[:start] + token + template[end+1:]
+			} else {
+				break // Can't resolve, leave as-is
+			}
+		}
+	}
+
 	if strings.Contains(template, "{api_key}") {
 		template = strings.ReplaceAll(template, "{api_key}", apiKey)
 	}

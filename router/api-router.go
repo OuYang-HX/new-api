@@ -124,6 +124,17 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.DELETE("/oauth/bindings/:provider_id", controller.UnbindCustomOAuth)
 			}
 
+			// Token Config management (internal tokens for header injection)
+			tokenConfigRoute := userRoute.Group("/token-config")
+			tokenConfigRoute.Use(middleware.UserAuth())
+			{
+				tokenConfigRoute.GET("/", controller.GetTokenConfigs)
+				tokenConfigRoute.POST("/", controller.CreateTokenConfig)
+				tokenConfigRoute.PUT("/:id", controller.UpdateTokenConfig)
+				tokenConfigRoute.DELETE("/:id", controller.DeleteTokenConfig)
+				tokenConfigRoute.POST("/:id/refresh", controller.ManualRefreshToken)
+			}
+
 			adminRoute := userRoute.Group("/")
 			adminRoute.Use(middleware.AdminAuth())
 			{
