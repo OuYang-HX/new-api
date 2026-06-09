@@ -146,7 +146,7 @@ func DeleteTokenConfig(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	service.DeleteTokenFromCache(cfg.Name)
+	service.DeleteTokenFromCache(cfg.UserId, cfg.Name)
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 	})

@@ -144,7 +144,7 @@ func shouldSkipPassthroughHeader(name string) bool {
 	return false
 }
 
-func applyHeaderOverridePlaceholders(template string, c *gin.Context, apiKey string) (string, bool, error) {
+func applyHeaderOverridePlaceholders(template string, c *gin.Context, apiKey string, userId int) (string, bool, error) {
 	trimmed := strings.TrimSpace(template)
 	if strings.HasPrefix(trimmed, clientHeaderPlaceholderPrefix) {
 		afterPrefix := trimmed[len(clientHeaderPlaceholderPrefix):]
@@ -182,7 +182,7 @@ func applyHeaderOverridePlaceholders(template string, c *gin.Context, apiKey str
 			}
 			end += start
 			name := template[start+7 : end] // extract name between ${token: and }
-			token, ok := service.GetTokenByName(name)
+			token, ok := service.GetTokenByName(userId, name)
 			if ok && token != "" {
 				template = template[:start] + token + template[end+1:]
 			} else {
@@ -297,7 +297,7 @@ func processHeaderOverride(info *common.RelayInfo, c *gin.Context) (map[string]s
 			continue
 		}
 
-		value, include, err := applyHeaderOverridePlaceholders(str, c, info.ApiKey)
+		value, include, err := applyHeaderOverridePlaceholders(str, c, info.ApiKey, info.UserId)
 		if err != nil {
 			return nil, types.NewError(err, types.ErrorCodeChannelHeaderOverrideInvalid)
 		}

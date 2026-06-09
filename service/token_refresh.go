@@ -17,44 +17,49 @@ import (
 	"github.com/QuantumNous/new-api/model"
 )
 
-// TokenCache provides a thread-safe in-memory cache for tokens keyed by config name.
+// TokenCache provides a thread-safe in-memory cache for tokens keyed by userId:name.
 type TokenCache struct {
 	mu    sync.RWMutex
-	cache map[string]string
+	cache map[string]string // key format: "userId:name"
 }
 
 var globalTokenCache = &TokenCache{cache: make(map[string]string)}
 
-// Get returns the cached token value for the given name.
-func (tc *TokenCache) Get(name string) (string, bool) {
+// cacheKey builds the composite cache key from userId and name.
+func cacheKey(userId int, name string) string {
+	return fmt.Sprintf("%d:%s", userId, name)
+}
+
+// Get returns the cached token value for the given userId and name.
+func (tc *TokenCache) Get(userId int, name string) (string, bool) {
 	tc.mu.RLock()
 	defer tc.mu.RUnlock()
-	v, ok := tc.cache[name]
+	v, ok := tc.cache[cacheKey(userId, name)]
 	return v, ok
 }
 
-// Set stores a token value under the given name.
-func (tc *TokenCache) Set(name string, value string) {
+// Set stores a token value under the given userId and name.
+func (tc *TokenCache) Set(userId int, name string, value string) {
 	tc.mu.Lock()
 	defer tc.mu.Unlock()
-	tc.cache[name] = value
+	tc.cache[cacheKey(userId, name)] = value
 }
 
-// Delete removes the token for the given name.
-func (tc *TokenCache) Delete(name string) {
+// Delete removes the token for the given userId and name.
+func (tc *TokenCache) Delete(userId int, name string) {
 	tc.mu.Lock()
 	defer tc.mu.Unlock()
-	delete(tc.cache, name)
+	delete(tc.cache, cacheKey(userId, name))
 }
 
-// GetTokenByName returns the cached token for a config name.
-func GetTokenByName(name string) (string, bool) {
-	return globalTokenCache.Get(name)
+// GetTokenByName returns the cached token for a userId and config name.
+func GetTokenByName(userId int, name string) (string, bool) {
+	return globalTokenCache.Get(userId, name)
 }
 
 // ResolveTokenVariables replaces all ${token:name} patterns in value with the
-// corresponding cached token. Unknown names are left as-is.
-func ResolveTokenVariables(value string, _ int) string {
+// corresponding cached token for the given userId. Unknown names are left as-is.
+func ResolveTokenVariables(value string, userId int) string {
 	var b strings.Builder
 	rest := value
 	for {
@@ -70,7 +75,7 @@ func ResolveTokenVariables(value string, _ int) string {
 			break
 		}
 		name := rest[start+8 : start+end]
-		if tok, ok := globalTokenCache.Get(name); ok {
+		if tok, ok := globalTokenCache.Get(userId, name); ok {
 			b.WriteString(tok)
 		} else {
 			b.WriteString(rest[start : start+end+1])
@@ -103,7 +108,7 @@ func refreshAllTokens() {
 	now := common.GetTimestamp()
 	for _, cfg := range configs {
 		if cfg.CurrentToken != "" && cfg.TokenExpiresAt > now {
-			globalTokenCache.Set(cfg.Name, cfg.CurrentToken)
+			globalTokenCache.Set(cfg.UserId, cfg.Name, cfg.CurrentToken)
 			continue
 		}
 		token, expiresAt, err := fetchToken(cfg)
@@ -116,7 +121,7 @@ func refreshAllTokens() {
 		if err := model.DB.Save(cfg).Error; err != nil {
 			common.SysError(fmt.Sprintf("failed to save token config %s: %v", cfg.Name, err))
 		}
-		globalTokenCache.Set(cfg.Name, token)
+		globalTokenCache.Set(cfg.UserId, cfg.Name, token)
 	}
 }
 
@@ -135,7 +140,7 @@ func ManualRefreshToken(id int) (*model.TokenConfig, error) {
 	if err := model.DB.Save(cfg).Error; err != nil {
 		return nil, fmt.Errorf("failed to save token config: %w", err)
 	}
-	globalTokenCache.Set(cfg.Name, token)
+	globalTokenCache.Set(cfg.UserId, cfg.Name, token)
 	return cfg, nil
 }
 
@@ -284,7 +289,7 @@ func truncateString(s string, maxLen int) string {
 	return s[:maxLen] + "..."
 }
 
-// DeleteTokenFromCache removes a token from the in-memory cache by config name.
-func DeleteTokenFromCache(name string) {
-	globalTokenCache.Delete(name)
+// DeleteTokenFromCache removes a token from the in-memory cache by userId and config name.
+func DeleteTokenFromCache(userId int, name string) {
+	globalTokenCache.Delete(userId, name)
 }
