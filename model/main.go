@@ -11,6 +11,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/custom" // custom-hook: decoupled extensions
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/driver/clickhouse"
@@ -297,8 +298,9 @@ func migrateDB() error {
 		&SystemInstance{},
 		&SystemTask{},
 		&SystemTaskLock{},
-		&TokenConfig{},
 	)
+	// custom-hook: register custom model migrations
+	custom.RegisterMigrations(DB)
 	if err != nil {
 		return err
 	}
@@ -350,7 +352,13 @@ func migrateDBFast() error {
 		{&SystemInstance{}, "SystemInstance"},
 		{&SystemTask{}, "SystemTask"},
 		{&SystemTaskLock{}, "SystemTaskLock"},
-		{&TokenConfig{}, "TokenConfig"},
+	}
+	// custom-hook: register custom model migrations (fast path)
+	for _, m := range custom.RegisterMigrationsFast(DB) {
+		migrations = append(migrations, struct {
+			model interface{}
+			name  string
+		}{model: m, name: "TokenConfig"})
 	}
 	// 动态计算migration数量，确保errChan缓冲区足够大
 	errChan := make(chan error, len(migrations))

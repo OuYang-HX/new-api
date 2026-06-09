@@ -1,12 +1,13 @@
-package controller
+// Copyright (C) 2023-2026 QuantumNous
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+package token_config
 
 import (
 	"net/http"
 	"strconv"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-gonic/gin"
 )
@@ -14,7 +15,7 @@ import (
 // GetTokenConfigs returns all token configs for the current user.
 func GetTokenConfigs(c *gin.Context) {
 	userId := c.GetInt("id")
-	configs, err := model.GetTokenConfigsByUserId(userId)
+	configs, err := GetTokenConfigsByUserId(userId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -33,7 +34,7 @@ func GetTokenConfigs(c *gin.Context) {
 
 // CreateTokenConfig creates a new token config for the current user.
 func CreateTokenConfig(c *gin.Context) {
-	var cfg model.TokenConfig
+	var cfg TokenConfig
 	if err := c.ShouldBindJSON(&cfg); err != nil {
 		common.ApiError(c, err)
 		return
@@ -73,7 +74,7 @@ func UpdateTokenConfig(c *gin.Context) {
 		})
 		return
 	}
-	cfg, err := model.GetTokenConfigById(id)
+	cfg, err := GetTokenConfigById(id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
 			"success": false,
@@ -89,7 +90,7 @@ func UpdateTokenConfig(c *gin.Context) {
 		})
 		return
 	}
-	var input model.TokenConfig
+	var input TokenConfig
 	if err := c.ShouldBindJSON(&input); err != nil {
 		common.ApiError(c, err)
 		return
@@ -126,7 +127,7 @@ func DeleteTokenConfig(c *gin.Context) {
 		})
 		return
 	}
-	cfg, err := model.GetTokenConfigById(id)
+	cfg, err := GetTokenConfigById(id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
 			"success": false,
@@ -146,7 +147,7 @@ func DeleteTokenConfig(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	service.DeleteTokenFromCache(cfg.UserId, cfg.Name)
+	DeleteTokenFromCache(cfg.UserId, cfg.Name)
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 	})
@@ -162,7 +163,7 @@ func ManualRefreshToken(c *gin.Context) {
 		})
 		return
 	}
-	cfg, err := model.GetTokenConfigById(id)
+	cfg, err := GetTokenConfigById(id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
 			"success": false,
@@ -178,7 +179,7 @@ func ManualRefreshToken(c *gin.Context) {
 		})
 		return
 	}
-	cfg, err = service.ManualRefreshToken(id)
+	cfg, err = RefreshTokenConfig(id)
 	if err != nil {
 		common.ApiError(c, err)
 		return

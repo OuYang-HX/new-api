@@ -1,7 +1,7 @@
 // Copyright (C) 2023-2026 QuantumNous
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-package service
+package token_config
 
 import (
 	"bytes"
@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/model"
 )
 
 // TokenCache provides a thread-safe in-memory cache for tokens keyed by userId:name.
@@ -100,7 +99,7 @@ func StartTokenRefreshScheduler() {
 
 // refreshAllTokens loads all enabled configs and refreshes expired ones.
 func refreshAllTokens() {
-	configs, err := model.GetAllEnabledTokenConfigs()
+	configs, err := GetAllEnabledTokenConfigs()
 	if err != nil {
 		common.SysError(fmt.Sprintf("failed to load token configs: %v", err))
 		return
@@ -118,16 +117,16 @@ func refreshAllTokens() {
 		}
 		cfg.CurrentToken = token
 		cfg.TokenExpiresAt = expiresAt
-		if err := model.DB.Save(cfg).Error; err != nil {
+		if err := db.Save(cfg).Error; err != nil {
 			common.SysError(fmt.Sprintf("failed to save token config %s: %v", cfg.Name, err))
 		}
 		globalTokenCache.Set(cfg.UserId, cfg.Name, token)
 	}
 }
 
-// ManualRefreshToken forces a refresh of a specific token config by ID.
-func ManualRefreshToken(id int) (*model.TokenConfig, error) {
-	cfg, err := model.GetTokenConfigById(id)
+// RefreshTokenConfig forces a refresh of a specific token config by ID.
+func RefreshTokenConfig(id int) (*TokenConfig, error) {
+	cfg, err := GetTokenConfigById(id)
 	if err != nil {
 		return nil, err
 	}
@@ -137,7 +136,7 @@ func ManualRefreshToken(id int) (*model.TokenConfig, error) {
 	}
 	cfg.CurrentToken = token
 	cfg.TokenExpiresAt = expiresAt
-	if err := model.DB.Save(cfg).Error; err != nil {
+	if err := db.Save(cfg).Error; err != nil {
 		return nil, fmt.Errorf("failed to save token config: %w", err)
 	}
 	globalTokenCache.Set(cfg.UserId, cfg.Name, token)
@@ -145,7 +144,7 @@ func ManualRefreshToken(id int) (*model.TokenConfig, error) {
 }
 
 // fetchToken performs the login request described by cfg and extracts the token.
-func fetchToken(cfg *model.TokenConfig) (token string, expiresAt int64, err error) {
+func fetchToken(cfg *TokenConfig) (token string, expiresAt int64, err error) {
 	// Build request body with variable substitution
 	body := cfg.LoginBody
 	body = strings.ReplaceAll(body, "{username}", cfg.Username)
