@@ -33,6 +33,7 @@ import {
   Users,
   Wallet,
 } from 'lucide-react'
+import { useCustomSidebarItems } from '@/custom/sidebar' // custom-hook: decoupled extensions
 import { useTranslation } from 'react-i18next'
 import { type SidebarData } from '@/components/layout/types'
 
@@ -44,8 +45,9 @@ import { type SidebarData } from '@/components/layout/types'
  */
 export function useSidebarData(): SidebarData {
   const { t } = useTranslation()
+  const customItems = useCustomSidebarItems()
 
-  return {
+  const base: SidebarData = {
     navGroups: [
       {
         id: 'chat',
@@ -147,13 +149,20 @@ export function useSidebarData(): SidebarData {
             activeUrls: ['/system-settings'],
             icon: Settings,
           },
-          {
-            title: t('Internal Token'),
-            url: '/internal-token',
-            icon: Key,
-          },
         ],
       },
     ],
   }
+
+  // custom-hook: merge custom sidebar items into base groups
+  for (const customGroup of customItems.navGroups) {
+    const baseGroup = base.navGroups.find((g) => g.id === customGroup.id)
+    if (baseGroup) {
+      baseGroup.items = [...baseGroup.items, ...customGroup.items]
+    } else {
+      base.navGroups.push(customGroup)
+    }
+  }
+
+  return base
 }

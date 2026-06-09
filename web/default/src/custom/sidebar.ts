@@ -16,9 +16,30 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { createFileRoute } from '@tanstack/react-router'
-import { InternalToken } from '@/custom/features/internal-token'
+import { Key } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import type { SidebarData } from '@/components/layout/types'
 
-export const Route = createFileRoute('/_authenticated/internal-token/')({
-  component: InternalToken,
-})
+/**
+ * Returns custom sidebar items to be merged into the main sidebar.
+ * This keeps all custom extensions decoupled from upstream code.
+ */
+export function useCustomSidebarItems(): SidebarData {
+  const { t } = useTranslation()
+
+  return {
+    navGroups: [
+      {
+        id: 'admin',
+        title: t('Admin'),
+        items: [
+          {
+            title: t('Internal Token'),
+            url: '/internal-token',
+            icon: Key,
+          },
+        ],
+      },
+    ],
+  }
+}

@@ -148,7 +148,7 @@ func authHelper(c *gin.Context, minRole int) {
 	c.Header("Auth-Version", "864b7076dbcd0a3c01b5520316720ebf")
 	c.Set("username", username)
 	c.Set("role", role)
-	c.Set("id", id.(int))
+	c.Set("id", id)
 	c.Set("group", session.Get("group"))
 	c.Set("user_group", session.Get("group"))
 	c.Set("use_access_token", useAccessToken)
@@ -161,7 +161,7 @@ func TryUserAuth() func(c *gin.Context) {
 		session := sessions.Default(c)
 		id := session.Get("id")
 		if id != nil {
-		c.Set("id", id.(int))
+			c.Set("id", id)
 		}
 		c.Next()
 	}
@@ -197,7 +197,7 @@ func TokenOrUserAuth() func(c *gin.Context) {
 		session := sessions.Default(c)
 		if id := session.Get("id"); id != nil {
 			if status, ok := session.Get("status").(int); ok && status == common.UserStatusEnabled {
-				c.Set("id", id.(int))
+				c.Set("id", id)
 				c.Next()
 				return
 			}

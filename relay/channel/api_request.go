@@ -16,6 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
+	"github.com/QuantumNous/new-api/custom" // custom-hook: decoupled extensions
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/types"
@@ -168,28 +169,8 @@ func applyHeaderOverridePlaceholders(template string, c *gin.Context, apiKey str
 		return clientHeaderValue, true, nil
 	}
 
-	// Resolve ${token:name} placeholders with internal token values
-	if strings.Contains(template, "${token:") {
-		// Find all ${token:xxx} patterns
-		for {
-			start := strings.Index(template, "${token:")
-			if start == -1 {
-				break
-			}
-			end := strings.Index(template[start:], "}")
-			if end == -1 {
-				break
-			}
-			end += start
-			name := template[start+7 : end] // extract name between ${token: and }
-			token, ok := service.GetTokenByName(userId, name)
-			if ok && token != "" {
-				template = template[:start] + token + template[end+1:]
-			} else {
-				break // Can't resolve, leave as-is
-			}
-		}
-	}
+	// custom-hook: resolve ${token:name} placeholders via custom extensions
+	template = custom.ResolveTokenVariables(template, userId)
 
 	if strings.Contains(template, "{api_key}") {
 		template = strings.ReplaceAll(template, "{api_key}", apiKey)
