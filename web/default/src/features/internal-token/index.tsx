@@ -228,6 +228,7 @@ export function InternalToken() {
   const isSubmitting = createMutation.isPending || updateMutation.isPending
 
   return (
+    <>
     <SectionPageLayout>
       <SectionPageLayout.Title>{t('Internal Token')}</SectionPageLayout.Title>
       <SectionPageLayout.Actions>
@@ -316,159 +317,160 @@ export function InternalToken() {
           </Table>
         )}
       </SectionPageLayout.Content>
-
-      {/* Create/Edit Dialog */}
-      <Dialog
-        open={formOpen}
-        onOpenChange={(open) => !open && closeForm()}
-        title={editingId !== null ? t('Edit') + ' ' + t('Internal Token') : t('Create') + ' ' + t('Internal Token')}
-        contentClassName='sm:max-w-lg'
-        footer={
-          <div className='flex gap-2'>
-            <Button type='button' variant='outline' onClick={closeForm}>
-              {t('Cancel')}
-            </Button>
-            <Button type='button' disabled={isSubmitting} onClick={() => {
-              const formEl = document.querySelector('form[data-form="token-config"]') as HTMLFormElement | null
-              formEl?.requestSubmit()
-            }}>
-              {isSubmitting ? t('Saving...') : t('Save')}
-            </Button>
-          </div>
-        }
-      >
-        <form data-form='token-config' onSubmit={handleSubmit} className='space-y-4'>
-          <div className='space-y-2'>
-            <Label htmlFor='name'>{t('Name')}</Label>
-            <Input
-              id='name'
-              value={form.name}
-              onChange={(e) => updateField('name', e.target.value)}
-              required
-            />
-          </div>
-
-          <div className='space-y-2'>
-            <Label htmlFor='login_url'>{t('Login URL')}</Label>
-            <Input
-              id='login_url'
-              value={form.login_url}
-              onChange={(e) => updateField('login_url', e.target.value)}
-              required
-            />
-          </div>
-
-          <div className='space-y-2'>
-            <Label htmlFor='login_method'>{t('Login Method')}</Label>
-            <Select
-              value={form.login_method}
-              onValueChange={(val) => updateField('login_method', val ?? undefined)}
-            >
-              <SelectTrigger id='login_method'>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value='POST'>POST</SelectItem>
-                <SelectItem value='GET'>GET</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className='space-y-2'>
-            <Label htmlFor='login_headers'>{t('Login Headers')}</Label>
-            <Textarea
-              id='login_headers'
-              value={form.login_headers}
-              onChange={(e) => updateField('login_headers', e.target.value)}
-              rows={3}
-              className='font-mono text-xs'
-              placeholder='{"Content-Type": "application/json"}'
-            />
-          </div>
-
-          <div className='space-y-2'>
-            <Label htmlFor='login_body'>{t('Login Body')}</Label>
-            <Textarea
-              id='login_body'
-              value={form.login_body}
-              onChange={(e) => updateField('login_body', e.target.value)}
-              rows={3}
-              className='font-mono text-xs'
-            />
-          </div>
-
-          <div className='space-y-2'>
-            <Label htmlFor='username'>{t('Username')}</Label>
-            <Input
-              id='username'
-              value={form.username}
-              onChange={(e) => updateField('username', e.target.value)}
-            />
-          </div>
-
-          <div className='space-y-2'>
-            <Label htmlFor='password'>{t('Password')}</Label>
-            <Input
-              id='password'
-              type='password'
-              value={form.password}
-              onChange={(e) => updateField('password', e.target.value)}
-            />
-          </div>
-
-          <div className='space-y-2'>
-            <Label htmlFor='token_json_path'>{t('Token JSON Path')}</Label>
-            <Input
-              id='token_json_path'
-              value={form.token_json_path}
-              onChange={(e) => updateField('token_json_path', e.target.value)}
-              placeholder='data.access_token'
-            />
-          </div>
-
-          <div className='space-y-2'>
-            <Label htmlFor='refresh_interval'>{t('Refresh Interval')} (s)</Label>
-            <Input
-              id='refresh_interval'
-              type='number'
-              min={0}
-              value={form.refresh_interval}
-              onChange={(e) =>
-                updateField('refresh_interval', Number(e.target.value))
-              }
-            />
-          </div>
-
-          <div className='flex items-center gap-3'>
-            <Switch
-              id='enabled'
-              checked={form.enabled === 1}
-              onCheckedChange={(checked) =>
-                updateField('enabled', checked ? 1 : 0)
-              }
-            />
-            <Label htmlFor='enabled'>{t('Enabled')}</Label>
-          </div>
-        </form>
-      </Dialog>
-
-      {/* Delete Confirmation */}
-      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('Confirm Delete')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('This action cannot be undone.')}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t('Cancel')}</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete}>
-              {t('Delete')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </SectionPageLayout>
+
+    {/* Create/Edit Dialog */}
+    <Dialog
+      open={formOpen}
+      onOpenChange={(open) => !open && closeForm()}
+      title={editingId !== null ? t('Edit') + ' ' + t('Internal Token') : t('Create') + ' ' + t('Internal Token')}
+      contentClassName='sm:max-w-lg'
+      footer={
+        <div className='flex gap-2'>
+          <Button type='button' variant='outline' onClick={closeForm}>
+            {t('Cancel')}
+          </Button>
+          <Button type='button' disabled={isSubmitting} onClick={() => {
+            const formEl = document.querySelector('form[data-form="token-config"]') as HTMLFormElement | null
+            formEl?.requestSubmit()
+          }}>
+            {isSubmitting ? t('Saving...') : t('Save')}
+          </Button>
+        </div>
+      }
+    >
+      <form data-form='token-config' onSubmit={handleSubmit} className='space-y-4'>
+        <div className='space-y-2'>
+          <Label htmlFor='name'>{t('Name')}</Label>
+          <Input
+            id='name'
+            value={form.name}
+            onChange={(e) => updateField('name', e.target.value)}
+            required
+          />
+        </div>
+
+        <div className='space-y-2'>
+          <Label htmlFor='login_url'>{t('Login URL')}</Label>
+          <Input
+            id='login_url'
+            value={form.login_url}
+            onChange={(e) => updateField('login_url', e.target.value)}
+            required
+          />
+        </div>
+
+        <div className='space-y-2'>
+          <Label htmlFor='login_method'>{t('Login Method')}</Label>
+          <Select
+            value={form.login_method}
+            onValueChange={(val) => updateField('login_method', val ?? undefined)}
+          >
+            <SelectTrigger id='login_method'>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value='POST'>POST</SelectItem>
+              <SelectItem value='GET'>GET</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className='space-y-2'>
+          <Label htmlFor='login_headers'>{t('Login Headers')}</Label>
+          <Textarea
+            id='login_headers'
+            value={form.login_headers}
+            onChange={(e) => updateField('login_headers', e.target.value)}
+            rows={3}
+            className='font-mono text-xs'
+            placeholder='{"Content-Type": "application/json"}'
+          />
+        </div>
+
+        <div className='space-y-2'>
+          <Label htmlFor='login_body'>{t('Login Body')}</Label>
+          <Textarea
+            id='login_body'
+            value={form.login_body}
+            onChange={(e) => updateField('login_body', e.target.value)}
+            rows={3}
+            className='font-mono text-xs'
+          />
+        </div>
+
+        <div className='space-y-2'>
+          <Label htmlFor='username'>{t('Username')}</Label>
+          <Input
+            id='username'
+            value={form.username}
+            onChange={(e) => updateField('username', e.target.value)}
+          />
+        </div>
+
+        <div className='space-y-2'>
+          <Label htmlFor='password'>{t('Password')}</Label>
+          <Input
+            id='password'
+            type='password'
+            value={form.password}
+            onChange={(e) => updateField('password', e.target.value)}
+          />
+        </div>
+
+        <div className='space-y-2'>
+          <Label htmlFor='token_json_path'>{t('Token JSON Path')}</Label>
+          <Input
+            id='token_json_path'
+            value={form.token_json_path}
+            onChange={(e) => updateField('token_json_path', e.target.value)}
+            placeholder='data.access_token'
+          />
+        </div>
+
+        <div className='space-y-2'>
+          <Label htmlFor='refresh_interval'>{t('Refresh Interval')} (s)</Label>
+          <Input
+            id='refresh_interval'
+            type='number'
+            min={0}
+            value={form.refresh_interval}
+            onChange={(e) =>
+              updateField('refresh_interval', Number(e.target.value))
+            }
+          />
+        </div>
+
+        <div className='flex items-center gap-3'>
+          <Switch
+            id='enabled'
+            checked={form.enabled === 1}
+            onCheckedChange={(checked) =>
+              updateField('enabled', checked ? 1 : 0)
+            }
+          />
+          <Label htmlFor='enabled'>{t('Enabled')}</Label>
+        </div>
+      </form>
+    </Dialog>
+
+    {/* Delete Confirmation */}
+    <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{t('Confirm Delete')}</AlertDialogTitle>
+          <AlertDialogDescription>
+            {t('This action cannot be undone.')}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>{t('Cancel')}</AlertDialogCancel>
+          <AlertDialogAction onClick={handleDelete}>
+            {t('Delete')}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   )
 }
