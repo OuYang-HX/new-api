@@ -166,6 +166,7 @@ import {
   ChannelEditorLoadingState,
   ChannelModelsSection,
 } from './sections'
+import { TokenPicker } from '@/custom/features/internal-token/token-picker' // custom-hook: internal token picker
 
 type ChannelMutateDrawerProps = {
   open: boolean
@@ -2855,6 +2856,18 @@ export function ChannelMutateDrawer({
                                   </FormDescription>
                                 </div>
                                 <div className='flex flex-wrap gap-2'>
+                                  <TokenPicker
+                                    onSelect={(placeholder) => {
+                                      try {
+                                        const parsed = JSON.parse(field.value || '{}')
+                                        parsed.Authorization = `Bearer ${placeholder}`
+                                        field.onChange(JSON.stringify(parsed, null, 2))
+                                      } catch (_e) {
+                                        /* append to raw value if not valid JSON */
+                                        field.onChange((field.value || '') + placeholder)
+                                      }
+                                    }}
+                                  />
                                   <Button
                                     type='button'
                                     variant='outline'
@@ -2938,7 +2951,11 @@ export function ChannelMutateDrawer({
                                 <code className='bg-muted rounded px-1 py-0.5'>
                                   {'{client_header:NAME}'}
                                 </code>{' '}
-                                — {t('Client header value')}
+                                — {t('Client header value')},{' '}
+                                <code className='bg-muted rounded px-1 py-0.5'>
+                                  {'${token:NAME}'}
+                                </code>{' '}
+                                — {t('Internal token value')}
                               </FormDescription>
                               <FormMessage />
                             </FormItem>
