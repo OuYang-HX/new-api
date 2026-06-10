@@ -4918,5 +4918,7 @@
   "Insert Token": "Insert Token",
   "Internal token value": "Internal token value",
   "Select a token to insert as ${token:name}": "Select a token to insert as ${token:name}",
-  "No tokens configured": "No tokens configured"
+  "No tokens configured": "No tokens configured",
+  "Create Token": "Create Token",
+  "Edit Token": "Edit Token"
 }
