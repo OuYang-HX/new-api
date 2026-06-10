@@ -4542,5 +4542,7 @@
   "Insert Token": "插入令牌",
   "Internal token value": "内部令牌值",
   "Select a token to insert as ${token:name}": "选择令牌以 ${token:name} 格式插入",
-  "No tokens configured": "未配置令牌"
+  "No tokens configured": "未配置令牌",
+  "Create Token": "创建令牌",
+  "Edit Token": "编辑令牌"
 }
