@@ -11,9 +11,9 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
-
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
@@ -41,8 +41,13 @@ func HandleCodexResponses(c *gin.Context) {
 		return
 	}
 
-	// Read request body
-	bodyBytes, err := io.ReadAll(c.Request.Body)
+	// Read the original request body from BodyStorage (set by middleware)
+	storage, err := common.GetBodyStorage(c)
+	if err != nil {
+		writeResponsesError(c, http.StatusBadRequest, fmt.Sprintf("Failed to read request body: %v", err))
+		return
+	}
+	bodyBytes, err := io.ReadAll(storage)
 	if err != nil {
 		writeResponsesError(c, http.StatusBadRequest, fmt.Sprintf("Failed to read request: %v", err))
 		return
@@ -71,10 +76,31 @@ func HandleCodexResponses(c *gin.Context) {
 
 	logger.LogDebug(c, "protocol_adapter: codex responses→chat model=%s", chatReq.Model)
 
-	// Replace the request body
+	// Replace both c.Request.Body and the cached BodyStorage so that
+	// downstream middleware (TokenAuth, Distribute) and controller.Relay
+	// all see the converted chat/completions request body.
 	c.Request.Body = io.NopCloser(bytes.NewReader(chatJSON))
 	c.Request.ContentLength = int64(len(chatJSON))
 	c.Request.Header.Set("Content-Type", "application/json")
+	// Invalidate the BodyStorage cache so the next GetBodyStorage call
+	// re-reads from the new c.Request.Body.
+	common.CleanupBodyStorage(c)
+	// Pre-populate BodyStorage with the converted body so downstream code
+	// that calls GetBodyStorage gets the chat/completions format.
+	newStorage, storeErr := common.CreateBodyStorage(chatJSON)
+	if storeErr == nil {
+		c.Set(common.KeyBodyStorage, newStorage)
+	}
+
+	// Set relay_mode so GenRelayInfo uses RelayModeChatCompletions.
+	// Without this, Path2RelayMode("/v1/codex/responses") returns
+	// RelayModeUnknown and the Custom channel adaptor appends the
+	// original URL path to the base URL, producing a wrong upstream URL.
+	c.Set("relay_mode", 1) // relayconstant.RelayModeChatCompletions = 1
+
+	// Override the URL path so Custom channel type constructs the correct
+	// upstream URL (/v1/chat/completions instead of /v1/codex/responses).
+	c.Request.URL.Path = "/v1/chat/completions"
 
 	if isStream {
 		handleCodexStream(c, chatReq)
@@ -125,9 +151,14 @@ func handleCodexNonStream(c *gin.Context) {
 		return
 	}
 
+	// Write converted response directly to the original writer.
+	// Since we buffered the entire response, headers haven't been
+	// sent to the client yet, so we can safely set the correct
+	// Content-Length and write the body.
 	original.Header().Set("Content-Type", "application/json")
+	original.Header().Set("Content-Length", strconv.Itoa(len(responseData)))
 	original.WriteHeader(http.StatusOK)
-	original.Write(responseData)
+	_, _ = original.Write(responseData)
 }
 
 // handleCodexStream handles streaming Codex responses.
@@ -141,7 +172,7 @@ func handleCodexStream(c *gin.Context, chatReq *dto.GeneralOpenAIRequest) {
 	interceptor.SendFinalEvents()
 }
 
-// HandleClaudeMessages handles /v1/claude/message requests.
+// HandleClaudeMessages handles /v1/claude/messages requests.
 // Routes through the standard Claude relay which already handles
 // request/response protocol conversion.
 func HandleClaudeMessages(c *gin.Context) {
@@ -154,6 +185,13 @@ func HandleClaudeMessages(c *gin.Context) {
 	}
 
 	logger.LogDebug(c, "protocol_adapter: claude messages request")
+
+	// Override the URL path so Custom channel type constructs the correct
+	// upstream URL (/v1/chat/completions instead of /v1/claude/messages).
+	// The Claude relay handler (ClaudeHelper) will convert the request
+	// format internally, but the URL path is used by GetRequestURL.
+	c.Request.URL.Path = "/v1/chat/completions"
+
 	controllerRelayFn(c, types.RelayFormatClaude)
 }
 
@@ -239,6 +277,7 @@ type bufferedWriter struct {
 	body       bytes.Buffer
 	statusCode int
 	written    bool
+	size       int
 }
 
 func newBufferedWriter(original gin.ResponseWriter) *bufferedWriter {
@@ -248,12 +287,27 @@ func newBufferedWriter(original gin.ResponseWriter) *bufferedWriter {
 	}
 }
 
-func (w *bufferedWriter) Write(data []byte) (int, error)    { return w.body.Write(data) }
-func (w *bufferedWriter) WriteHeader(code int)              { w.statusCode = code; w.written = true }
-func (w *bufferedWriter) Status() int                       { return w.statusCode }
-func (w *bufferedWriter) Written() bool                     { return w.written }
-func (w *bufferedWriter) Flush()                            {}
-func (w *bufferedWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) { return w.ResponseWriter.Hijack() }
+func (w *bufferedWriter) Write(data []byte) (int, error) {
+	n, err := w.body.Write(data)
+	w.size += n
+	return n, err
+}
+func (w *bufferedWriter) WriteHeader(code int)  { w.statusCode = code; w.written = true }
+func (w *bufferedWriter) WriteHeaderNow()       {} // suppress: don't send headers to client yet
+func (w *bufferedWriter) Status() int           { return w.statusCode }
+func (w *bufferedWriter) Written() bool         { return w.written }
+func (w *bufferedWriter) Size() int             { return w.size }
+func (w *bufferedWriter) WriteString(s string) (int, error) { return w.Write([]byte(s)) }
+func (w *bufferedWriter) Flush()                {}
+func (w *bufferedWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	return w.ResponseWriter.Hijack()
+}
+func (w *bufferedWriter) Pusher() http.Pusher {
+	if pusher, ok := w.ResponseWriter.(http.Pusher); ok {
+		return pusher
+	}
+	return nil
+}
 
 func forwardBufferedResponse(dst gin.ResponseWriter, src *bufferedWriter) {
 	for k, v := range src.Header() {
