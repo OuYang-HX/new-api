@@ -3,6 +3,7 @@ package router
 import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/controller"
+	"github.com/QuantumNous/new-api/custom" // custom-hook: decoupled extensions
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/relay"
 	"github.com/QuantumNous/new-api/types"
@@ -163,6 +164,8 @@ func SetRelayRouter(router *gin.Engine) {
 		httpRouter.POST("/fine-tunes/:id/cancel", controller.RelayNotImplemented)
 		httpRouter.GET("/fine-tunes/:id/events", controller.RelayNotImplemented)
 		httpRouter.DELETE("/models/:model", controller.RelayNotImplemented)
+		// custom-hook: register custom protocol adapter relay routes
+		custom.RegisterRelayRoutes(httpRouter)
 	}
 
 	relayMjRouter := router.Group("/mj")

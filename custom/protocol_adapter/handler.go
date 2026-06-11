@@ -1,0 +1,434 @@
+// Copyright (C) 2023-2026 QuantumNous
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+package protocol_adapter
+
+import (
+	"bufio"
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/types"
+
+	"github.com/gin-gonic/gin"
+)
+
+// controllerRelayFn is injected via SetRelayFunc to avoid import cycles.
+var controllerRelayFn func(c *gin.Context, relayFormat types.RelayFormat)
+
+// SetRelayFunc injects the controller.Relay function.
+func SetRelayFunc(f func(c *gin.Context, relayFormat types.RelayFormat)) {
+	controllerRelayFn = f
+}
+
+// HandleCodexResponses handles /v1/codex/responses requests.
+// It accepts Responses API format (as Codex CLI sends), converts to chat/completions,
+// relays through the standard pipeline, and converts the response back to Responses format.
+func HandleCodexResponses(c *gin.Context) {
+	if controllerRelayFn == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": gin.H{"message": "protocol adapter not initialized", "type": "server_error"},
+		})
+		return
+	}
+
+	// Read request body
+	bodyBytes, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		writeResponsesError(c, http.StatusBadRequest, fmt.Sprintf("Failed to read request: %v", err))
+		return
+	}
+
+	var req dto.OpenAIResponsesRequest
+	if err := common.Unmarshal(bodyBytes, &req); err != nil {
+		writeResponsesError(c, http.StatusBadRequest, fmt.Sprintf("Failed to parse request: %v", err))
+		return
+	}
+
+	isStream := req.Stream != nil && *req.Stream
+
+	// Convert Responses request → Chat Completions request
+	chatReq, err := ResponsesRequestToChatCompletionsRequest(&req)
+	if err != nil {
+		writeResponsesError(c, http.StatusBadRequest, fmt.Sprintf("Failed to convert request: %v", err))
+		return
+	}
+
+	chatJSON, err := common.Marshal(chatReq)
+	if err != nil {
+		writeResponsesError(c, http.StatusInternalServerError, fmt.Sprintf("Failed to marshal request: %v", err))
+		return
+	}
+
+	logger.LogDebug(c, "protocol_adapter: codex responses→chat model=%s", chatReq.Model)
+
+	// Replace the request body
+	c.Request.Body = io.NopCloser(bytes.NewReader(chatJSON))
+	c.Request.ContentLength = int64(len(chatJSON))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	if isStream {
+		handleCodexStream(c, chatReq)
+	} else {
+		handleCodexNonStream(c)
+	}
+}
+
+// handleCodexNonStream handles non-streaming Codex responses.
+func handleCodexNonStream(c *gin.Context) {
+	original := c.Writer
+	buf := newBufferedWriter(original)
+	c.Writer = buf
+
+	controllerRelayFn(c, types.RelayFormatOpenAI)
+
+	capturedBody := buf.body.Bytes()
+	if len(capturedBody) == 0 {
+		return
+	}
+
+	// Try to parse as chat completions response
+	var chatResp dto.OpenAITextResponse
+	if err := common.Unmarshal(capturedBody, &chatResp); err != nil {
+		forwardBufferedResponse(original, buf)
+		return
+	}
+
+	if chatResp.Object == "" {
+		forwardBufferedResponse(original, buf)
+		return
+	}
+
+	if oaiErr := chatResp.GetOpenAIError(); oaiErr != nil && oaiErr.Type != "" {
+		forwardBufferedResponse(original, buf)
+		return
+	}
+
+	responsesResp, err := ConvertChatResponseToResponses(&chatResp)
+	if err != nil {
+		forwardBufferedResponse(original, buf)
+		return
+	}
+
+	responseData, err := common.Marshal(responsesResp)
+	if err != nil {
+		forwardBufferedResponse(original, buf)
+		return
+	}
+
+	original.Header().Set("Content-Type", "application/json")
+	original.WriteHeader(http.StatusOK)
+	original.Write(responseData)
+}
+
+// handleCodexStream handles streaming Codex responses.
+func handleCodexStream(c *gin.Context, chatReq *dto.GeneralOpenAIRequest) {
+	interceptor := newResponsesStreamInterceptor(c.Writer, chatReq.Model)
+	c.Writer = interceptor
+	interceptor.SendStartEvents()
+
+	controllerRelayFn(c, types.RelayFormatOpenAI)
+
+	interceptor.SendFinalEvents()
+}
+
+// HandleClaudeMessages handles /v1/claude/message requests.
+// Routes through the standard Claude relay which already handles
+// request/response protocol conversion.
+func HandleClaudeMessages(c *gin.Context) {
+	if controllerRelayFn == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"type":  "error",
+			"error": gin.H{"message": "protocol adapter not initialized", "type": "server_error"},
+		})
+		return
+	}
+
+	logger.LogDebug(c, "protocol_adapter: claude messages request")
+	controllerRelayFn(c, types.RelayFormatClaude)
+}
+
+// ConvertChatResponseToResponses converts a Chat Completions response to Responses API format.
+func ConvertChatResponseToResponses(chatResp *dto.OpenAITextResponse) (*dto.OpenAIResponsesResponse, error) {
+	if chatResp == nil {
+		return nil, fmt.Errorf("response is nil")
+	}
+
+	output := make([]dto.ResponsesOutput, 0)
+
+	for _, choice := range chatResp.Choices {
+		content := make([]dto.ResponsesOutputContent, 0)
+
+		if choice.Message.IsStringContent() {
+			text := choice.Message.StringContent()
+			if text != "" {
+				content = append(content, dto.ResponsesOutputContent{
+					Type: "output_text",
+					Text: text,
+				})
+			}
+		} else {
+			parts := choice.Message.ParseContent()
+			for _, part := range parts {
+				if part.Type == dto.ContentTypeText {
+					content = append(content, dto.ResponsesOutputContent{
+						Type: "output_text",
+						Text: part.Text,
+					})
+				}
+			}
+		}
+
+		output = append(output, dto.ResponsesOutput{
+			Type:    "message",
+			ID:      fmt.Sprintf("msg_%s", chatResp.Id),
+			Status:  "completed",
+			Role:    "assistant",
+			Content: content,
+		})
+
+		// Handle tool calls
+		for _, tc := range choice.Message.ParseToolCalls() {
+			output = append(output, dto.ResponsesOutput{
+				Type:      "function_call",
+				ID:        fmt.Sprintf("fc_%s_%s", chatResp.Id, tc.ID),
+				CallId:    tc.ID,
+				Name:      tc.Function.Name,
+				Arguments: json.RawMessage(tc.Function.Arguments),
+			})
+		}
+	}
+
+	usage := chatResp.Usage
+
+	createdAt := 0
+	if v, ok := chatResp.Created.(int64); ok {
+		createdAt = int(v)
+	} else if v, ok := chatResp.Created.(int); ok {
+		createdAt = v
+	} else if v, ok := chatResp.Created.(float64); ok {
+		createdAt = int(v)
+	}
+
+	resp := &dto.OpenAIResponsesResponse{
+		ID:        chatResp.Id,
+		Object:    "response",
+		CreatedAt: createdAt,
+		Status:    json.RawMessage(`"completed"`),
+		Model:     chatResp.Model,
+		Output:    output,
+		Usage:     &usage,
+	}
+
+	return resp, nil
+}
+
+// --- Buffered response writer ---
+
+type bufferedWriter struct {
+	gin.ResponseWriter
+	body       bytes.Buffer
+	statusCode int
+	written    bool
+}
+
+func newBufferedWriter(original gin.ResponseWriter) *bufferedWriter {
+	return &bufferedWriter{
+		ResponseWriter: original,
+		statusCode:     http.StatusOK,
+	}
+}
+
+func (w *bufferedWriter) Write(data []byte) (int, error)    { return w.body.Write(data) }
+func (w *bufferedWriter) WriteHeader(code int)              { w.statusCode = code; w.written = true }
+func (w *bufferedWriter) Status() int                       { return w.statusCode }
+func (w *bufferedWriter) Written() bool                     { return w.written }
+func (w *bufferedWriter) Flush()                            {}
+func (w *bufferedWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) { return w.ResponseWriter.Hijack() }
+
+func forwardBufferedResponse(dst gin.ResponseWriter, src *bufferedWriter) {
+	for k, v := range src.Header() {
+		dst.Header()[k] = v
+	}
+	dst.WriteHeader(src.statusCode)
+	dst.Write(src.body.Bytes())
+}
+
+// --- SSE stream interceptor ---
+
+type responsesStreamInterceptor struct {
+	gin.ResponseWriter
+	responseID string
+	messageID  string
+	model      string
+	usage      *dto.Usage
+	fullText   strings.Builder
+}
+
+func newResponsesStreamInterceptor(w gin.ResponseWriter, model string) *responsesStreamInterceptor {
+	return &responsesStreamInterceptor{
+		ResponseWriter: w,
+		responseID:     fmt.Sprintf("resp_%s", common.GetRandomString(24)),
+		messageID:      fmt.Sprintf("msg_%s", common.GetRandomString(24)),
+		model:          model,
+		usage:          &dto.Usage{},
+	}
+}
+
+func (w *responsesStreamInterceptor) Write(data []byte) (int, error) {
+	dataStr := string(data)
+
+	if strings.HasPrefix(dataStr, "data: ") {
+		jsonStr := strings.TrimPrefix(dataStr, "data: ")
+		jsonStr = strings.TrimRight(jsonStr, "\r\n")
+
+		if jsonStr == "[DONE]" {
+			return len(data), nil
+		}
+
+		var chunk dto.ChatCompletionsStreamResponse
+		if err := common.Unmarshal([]byte(jsonStr), &chunk); err != nil {
+			return len(data), nil
+		}
+
+		w.convertChunkToResponsesEvents(&chunk)
+		return len(data), nil
+	}
+
+	return len(data), nil
+}
+
+func (w *responsesStreamInterceptor) WriteString(s string) (int, error) {
+	return w.Write([]byte(s))
+}
+
+func (w *responsesStreamInterceptor) SendStartEvents() {
+	w.writeSSE("response.created", map[string]any{
+		"type": "response.created",
+		"response": map[string]any{
+			"id": w.responseID, "object": "response", "status": "in_progress",
+			"model": w.model, "output": []any{}, "stream": true, "created_at": time.Now().Unix(),
+		},
+	})
+
+	w.writeSSE("response.in_progress", map[string]any{
+		"type": "response.in_progress",
+		"response": map[string]any{
+			"id": w.responseID, "object": "response", "status": "in_progress", "model": w.model,
+		},
+	})
+
+	w.writeSSE("response.output_item.added", map[string]any{
+		"type": "response.output_item.added", "output_index": 0,
+		"item": map[string]any{
+			"type": "message", "id": w.messageID, "status": "in_progress", "role": "assistant", "content": []any{},
+		},
+	})
+
+	w.writeSSE("response.content_part.added", map[string]any{
+		"type": "response.content_part.added", "output_index": 0, "content_index": 0,
+		"part": map[string]any{"type": "output_text", "text": ""},
+	})
+}
+
+func (w *responsesStreamInterceptor) SendFinalEvents() {
+	text := w.fullText.String()
+
+	w.writeSSE("response.output_text.done", map[string]any{
+		"type": "response.output_text.done", "output_index": 0, "content_index": 0, "text": text,
+	})
+
+	w.writeSSE("response.content_part.done", map[string]any{
+		"type": "response.content_part.done", "output_index": 0, "content_index": 0,
+		"part": map[string]any{"type": "output_text", "text": text},
+	})
+
+	w.writeSSE("response.output_item.done", map[string]any{
+		"type": "response.output_item.done", "output_index": 0,
+		"item": map[string]any{
+			"type": "message", "id": w.messageID, "status": "completed",
+			"role": "assistant", "content": []any{map[string]any{"type": "output_text", "text": text}},
+		},
+	})
+
+	w.writeSSE("response.completed", map[string]any{
+		"type": "response.completed",
+		"response": map[string]any{
+			"id": w.responseID, "object": "response", "status": "completed", "model": w.model,
+			"output": []any{
+				map[string]any{
+					"type": "message", "id": w.messageID, "status": "completed",
+					"role": "assistant", "content": []any{map[string]any{"type": "output_text", "text": text}},
+				},
+			},
+			"usage": map[string]any{
+				"input_tokens": w.usage.PromptTokens, "output_tokens": w.usage.CompletionTokens,
+				"total_tokens": w.usage.TotalTokens,
+			},
+		},
+	})
+
+	w.ResponseWriter.Write([]byte("data: [DONE]\n\n"))
+	w.ResponseWriter.Flush()
+}
+
+func (w *responsesStreamInterceptor) convertChunkToResponsesEvents(chunk *dto.ChatCompletionsStreamResponse) {
+	for _, choice := range chunk.Choices {
+		// Handle text content
+		if choice.Delta.Content != nil && *choice.Delta.Content != "" {
+			text := *choice.Delta.Content
+			w.fullText.WriteString(text)
+			w.writeSSE("response.output_text.delta", map[string]any{
+				"type": "output_text", "text": text, "output_index": 0, "content_index": 0,
+			})
+		}
+
+		// Handle reasoning content
+		if choice.Delta.ReasoningContent != nil && *choice.Delta.ReasoningContent != "" {
+			text := *choice.Delta.ReasoningContent
+			w.fullText.WriteString(text)
+			w.writeSSE("response.output_text.delta", map[string]any{
+				"type": "output_text", "text": text, "output_index": 0, "content_index": 0,
+			})
+		}
+
+		// Handle tool calls
+		for _, tc := range choice.Delta.ToolCalls {
+			if tc.Function.Name != "" {
+				w.writeSSE("response.function_call_arguments.delta", map[string]any{
+					"type": "function_call", "call_id": tc.ID,
+					"name": tc.Function.Name, "arguments": tc.Function.Arguments,
+				})
+			}
+		}
+
+		// Handle usage
+		if chunk.Usage != nil && chunk.Usage.TotalTokens > 0 {
+			w.usage = chunk.Usage
+		}
+	}
+}
+
+func (w *responsesStreamInterceptor) writeSSE(eventType string, data any) {
+	dataJSON, err := json.Marshal(data)
+	if err != nil {
+		return
+	}
+	w.ResponseWriter.Write([]byte(fmt.Sprintf("event: %s\ndata: %s\n\n", eventType, string(dataJSON))))
+	w.ResponseWriter.Flush()
+}
+
+func writeResponsesError(c *gin.Context, statusCode int, message string) {
+	c.JSON(statusCode, gin.H{
+		"error": gin.H{"message": message, "type": "invalid_request_error"},
+	})
+}
