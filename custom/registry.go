@@ -46,11 +46,12 @@ func StartSchedulers() {
 	go token_config.StartTokenRefreshScheduler()
 }
 
-// InitProtocolAdapter initializes the protocol adapter by injecting the relay function.
-// This must be called before RegisterRelayRoutes to avoid nil function calls.
-// The relayFunc parameter is controller.Relay, passed in from main.go to avoid import cycles.
-func InitProtocolAdapter(relayFunc func(c *gin.Context, relayFormat types.RelayFormat)) {
+// InitProtocolAdapter initializes the protocol adapter by injecting the relay function
+// and the enabled models function. This must be called before RegisterRelayRoutes
+// to avoid nil function calls.
+func InitProtocolAdapter(relayFunc func(c *gin.Context, relayFormat types.RelayFormat), enabledModelsFunc func() []string) {
 	protocol_adapter.SetRelayFunc(relayFunc)
+	protocol_adapter.SetEnabledModelsFn(enabledModelsFunc)
 }
 
 // RegisterRelayRoutes registers custom relay routes on the given router group.
@@ -61,9 +62,14 @@ func RegisterRelayRoutes(relayRouter *gin.RouterGroup) {
 	relayRouter.POST("/codex/responses/compact", protocol_adapter.HandleCodexResponses)
 
 	// Claude Code CLI protocol adapter: converts /v1/messages → /v1/chat/completions → /v1/messages
-	// Note: The existing /v1/messages endpoint already handles this conversion natively.
-	// This route provides an explicit entry point for the protocol adapter.
 	relayRouter.POST("/claude/messages", protocol_adapter.HandleClaudeMessages)
+}
+
+// HandleCodexModels is a thin wrapper to expose HandleCodexModels without
+// importing protocol_adapter from the router package (avoids pulling in
+// unnecessary dependencies).
+func HandleCodexModels(c *gin.Context) {
+	protocol_adapter.HandleCodexModels(c)
 }
 
 // ResolveTokenVariables replaces ${token:name} placeholders in a header value

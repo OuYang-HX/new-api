@@ -18,16 +18,23 @@ import (
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/types"
-
 	"github.com/gin-gonic/gin"
 )
 
 // controllerRelayFn is injected via SetRelayFunc to avoid import cycles.
 var controllerRelayFn func(c *gin.Context, relayFormat types.RelayFormat)
 
+// enabledModelsFn is injected via SetEnabledModelsFn to avoid import cycles.
+var enabledModelsFn func() []string
+
 // SetRelayFunc injects the controller.Relay function.
 func SetRelayFunc(f func(c *gin.Context, relayFormat types.RelayFormat)) {
 	controllerRelayFn = f
+}
+
+// SetEnabledModelsFn injects the model.GetEnabledModels function.
+func SetEnabledModelsFn(f func() []string) {
+	enabledModelsFn = f
 }
 
 // HandleCodexResponses handles /v1/codex/responses requests.
@@ -484,5 +491,27 @@ func (w *responsesStreamInterceptor) writeSSE(eventType string, data any) {
 func writeResponsesError(c *gin.Context, statusCode int, message string) {
 	c.JSON(statusCode, gin.H{
 		"error": gin.H{"message": message, "type": "invalid_request_error"},
+	})
+}
+
+// HandleCodexModels handles GET /v1/codex/models.
+// Codex CLI queries this to discover available models.
+func HandleCodexModels(c *gin.Context) {
+	var names []string
+	if enabledModelsFn != nil {
+		names = enabledModelsFn()
+	}
+	result := make([]map[string]any, 0, len(names))
+	for _, name := range names {
+		result = append(result, map[string]any{
+			"id":       name,
+			"object":   "model",
+			"created":  time.Now().Unix(),
+			"owned_by": "custom",
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"object": "list",
+		"data":   result,
 	})
 }

@@ -41,6 +41,11 @@ func SetRelayRouter(router *gin.Engine) {
 			}
 		})
 	}
+	// custom-hook: Codex CLI models endpoint (same auth as /v1/models)
+	codexModelsRouter := router.Group("/v1/codex/models")
+	codexModelsRouter.Use(middleware.RouteTag("relay"))
+	codexModelsRouter.Use(middleware.TokenAuth())
+	codexModelsRouter.GET("", custom.HandleCodexModels)
 
 	geminiRouter := router.Group("/v1beta/models")
 	geminiRouter.Use(middleware.RouteTag("relay"))

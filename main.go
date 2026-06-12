@@ -122,7 +122,7 @@ func main() {
 	// custom-hook: start custom background schedulers
 	custom.StartSchedulers()
 	// custom-hook: initialize protocol adapter (must be before router setup)
-	custom.InitProtocolAdapter(controller.Relay)
+	custom.InitProtocolAdapter(controller.Relay, model.GetEnabledModels)
 
 	// Wire task polling adaptor factory (breaks service -> relay import cycle)
 	service.GetTaskAdaptorFunc = func(platform constant.TaskPlatform) service.TaskPollingAdaptor {
