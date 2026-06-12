@@ -199,6 +199,11 @@ func convertResponsesInputToMessages(input json.RawMessage) ([]dto.Message, erro
 			if role == "" {
 				role = "user"
 			}
+			// Responses API 'developer' role → Chat Completions 'system' role
+			// Codex CLI sends developer messages for system instructions
+			if role == "developer" {
+				role = "system"
+			}
 
 			msg := dto.Message{Role: role}
 			content := item["content"]
