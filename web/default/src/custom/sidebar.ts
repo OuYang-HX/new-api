@@ -16,30 +16,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Key } from 'lucide-react'
-import { useTranslation } from 'react-i18next'
 import type { SidebarData } from '@/components/layout/types'
 
 /**
  * Returns custom sidebar items to be merged into the main sidebar.
- * This keeps all custom extensions decoupled from upstream code.
+ * Internal Token is now placed directly in the admin group in
+ * use-sidebar-data.ts (after Channels), so no custom items needed here.
  */
 export function useCustomSidebarItems(): SidebarData {
-  const { t } = useTranslation()
-
   return {
-    navGroups: [
-      {
-        id: 'admin',
-        title: t('Admin'),
-        items: [
-          {
-            title: t('Internal Token'),
-            url: '/internal-token',
-            icon: Key,
-          },
-        ],
-      },
-    ],
+    navGroups: [],
   }
 }

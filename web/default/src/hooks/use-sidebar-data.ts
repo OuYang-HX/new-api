@@ -124,6 +124,11 @@ export function useSidebarData(): SidebarData {
             icon: Radio,
           },
           {
+            title: t('Internal Token'),
+            url: '/internal-token',
+            icon: Key,
+          },
+          {
             title: t('Models'),
             url: '/models/metadata',
             icon: Box,
