@@ -160,6 +160,15 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 	//case constant.ChannelTypeMiniMax:
 	//	return minimax.GetRequestURL(info)
 	case constant.ChannelTypeCustom:
+		// For Claude/Gemini relay formats, always use /chat/completions
+		// since the request body is already converted to OpenAI format.
+		// Note: we append /chat/completions (not /v1/chat/completions) because
+		// the base_url typically already includes a version prefix (e.g., /v1, /v2).
+		if (info.RelayFormat == types.RelayFormatClaude || info.RelayFormat == types.RelayFormatGemini) &&
+			info.RelayMode != relayconstant.RelayModeResponses &&
+			info.RelayMode != relayconstant.RelayModeResponsesCompact {
+			return fmt.Sprintf("%s/chat/completions", info.ChannelBaseUrl), nil
+		}
 		url := info.ChannelBaseUrl
 		url = strings.Replace(url, "{model}", info.UpstreamModelName, -1)
 		// Handle request path: strip /v1 prefix and append to base URL
