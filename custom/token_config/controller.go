@@ -189,3 +189,22 @@ func ManualRefreshToken(c *gin.Context) {
 		"data":    cfg,
 	})
 }
+
+// GetAllTokenConfigs returns all token configs across all users (admin only).
+func GetAllTokenConfigs(c *gin.Context) {
+	configs, err := GetAllTokenConfigsFromDB()
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	// Mask passwords in response
+	for _, cfg := range configs {
+		if cfg.Password != "" {
+			cfg.Password = "***"
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    configs,
+	})
+}

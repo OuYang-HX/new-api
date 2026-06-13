@@ -52,3 +52,9 @@ export async function refreshTokenConfig(
   const res = await api.post(`/api/user/token-config/${id}/refresh`)
   return res.data
 }
+
+// Admin-only: get all token configs across users
+export async function getAllTokenConfigs(): Promise<ApiResponse<TokenConfig[]>> {
+  const res = await api.get('/api/user/token-config/all')
+  return res.data
+}

@@ -32,13 +32,16 @@ func RegisterMigrationsFast(database *gorm.DB) []interface{} {
 }
 
 // RegisterRoutes registers custom API routes on the given router group.
-func RegisterRoutes(userRoute *gin.RouterGroup) {
+func RegisterRoutes(userRoute *gin.RouterGroup, adminRoute *gin.RouterGroup) {
 	tcRoute := userRoute.Group("/token-config")
 	tcRoute.GET("/", token_config.GetTokenConfigs)
 	tcRoute.POST("/", token_config.CreateTokenConfig)
 	tcRoute.PUT("/:id", token_config.UpdateTokenConfig)
 	tcRoute.DELETE("/:id", token_config.DeleteTokenConfig)
 	tcRoute.POST("/:id/refresh", token_config.ManualRefreshToken)
+
+	// Admin-only: get all token configs across users (for channel token picker)
+	adminRoute.GET("/token-config/all", token_config.GetAllTokenConfigs)
 }
 
 // StartSchedulers launches custom background schedulers.

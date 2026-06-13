@@ -85,6 +85,11 @@ export function useSidebarData(): SidebarData {
             icon: Key,
           },
           {
+            title: t('Internal Token'),
+            url: '/internal-token',
+            icon: Key,
+          },
+          {
             title: t('Usage Logs'),
             url: '/usage-logs/common',
             icon: FileText,
@@ -122,11 +127,6 @@ export function useSidebarData(): SidebarData {
             title: t('Channels'),
             url: '/channels',
             icon: Radio,
-          },
-          {
-            title: t('Internal Token'),
-            url: '/internal-token',
-            icon: Key,
           },
           {
             title: t('Models'),

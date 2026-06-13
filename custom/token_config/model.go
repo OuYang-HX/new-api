@@ -82,3 +82,22 @@ func GetTokenConfigByNameAndUserId(name string, userId int) (*TokenConfig, error
 	}
 	return &t, nil
 }
+
+// GetTokenConfigByName returns the first token config matching the given name
+// across all users. Used when resolving ${token:name} in channel configs
+// where the token may belong to a different user than the request sender.
+func GetTokenConfigByName(name string) (*TokenConfig, error) {
+	var t TokenConfig
+	err := db.Where("name = ? AND enabled = 1", name).First(&t).Error
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
+// GetAllTokenConfigsFromDB returns all token configs (for admin use).
+func GetAllTokenConfigsFromDB() ([]*TokenConfig, error) {
+	var configs []*TokenConfig
+	err := db.Find(&configs).Error
+	return configs, err
+}
