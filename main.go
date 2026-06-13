@@ -189,7 +189,13 @@ func main() {
 		Secure:   false,
 		SameSite: http.SameSiteStrictMode,
 	})
-	server.Use(sessions.Sessions("session", store))
+
+	// 根据 PORT 自动生成不同的 session cookie 名称
+	sessionName := "session"
+	if port := os.Getenv("PORT"); port != "" {
+		sessionName = "session_" + port
+	}
+	server.Use(sessions.Sessions(sessionName, store))
 
 	InjectUmamiAnalytics()
 	InjectGoogleAnalytics()
