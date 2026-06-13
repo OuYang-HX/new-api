@@ -54,7 +54,7 @@ import { ROLE } from '@/lib/roles'
 
 const EMPTY_FORM: TokenConfigFormData = {
   name: '',
-  template_id: 0,
+  template_id: undefined,
   username: '',
   password: '',
   enabled: 1,
@@ -210,6 +210,10 @@ export function InternalToken() {
     setForm((prev) => ({ ...prev, [key]: value }))
   }
 
+  // Whether the form should show the full custom config fields
+  // Only when admin explicitly selects "Custom (no template)"
+  const showCustomFields = isAdmin && form.template_id === 0
+
   const isSubmitting = createMutation.isPending || updateMutation.isPending
 
   return (
@@ -320,7 +324,7 @@ export function InternalToken() {
         <div className='space-y-2'>
           <Label htmlFor='template_id'>{t('Template')}</Label>
           <Select
-            value={form.template_id?.toString() ?? '0'}
+            value={form.template_id?.toString() ?? (isAdmin ? '0' : '')}
             onValueChange={(val) => updateField('template_id', Number(val))}
           >
             <SelectTrigger id='template_id'>
@@ -337,7 +341,7 @@ export function InternalToken() {
               ))}
             </SelectContent>
           </Select>
-          {templates.length === 0 && (
+          {templates.length === 0 && !isAdmin && (
             <p className='text-muted-foreground text-xs'>
               {t('No templates available. Ask your admin to create one first.')}
             </p>
@@ -354,7 +358,7 @@ export function InternalToken() {
           />
         </div>
 
-        {form.template_id === 0 && isAdmin && (
+        {showCustomFields && (
           <>
             <div className='space-y-2'>
               <Label htmlFor='login_url'>{t('Login URL')}</Label>
