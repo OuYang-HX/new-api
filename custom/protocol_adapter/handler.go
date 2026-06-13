@@ -519,7 +519,7 @@ func (w *responsesStreamInterceptor) convertChunkToResponsesEvents(chunk *dto.Ch
 					Type: "function",
 					Function: dto.FunctionResponse{
 						Name:      tc.Function.Name,
-						Arguments: tc.Function.Arguments,
+						Arguments: "",
 					},
 				})
 			}
