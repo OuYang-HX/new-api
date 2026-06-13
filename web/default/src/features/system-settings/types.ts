@@ -333,6 +333,8 @@ export type OperationsSettings = {
   DefaultCollapseSidebar: boolean
   DemoSiteEnabled: boolean
   SelfUseModeEnabled: boolean
+  TokenRevealEnabled: boolean
+  ChannelDisableThreshold: string
   QuotaRemindThreshold: string
   SMTPServer: string
   SMTPPort: string
