@@ -327,10 +327,10 @@ export function InternalToken() {
             value={form.template_id?.toString() ?? (isAdmin ? '0' : '')}
             onValueChange={(val) => updateField('template_id', Number(val))}
           >
-            <SelectTrigger id='template_id'>
+            <SelectTrigger id='template_id' className='w-full'>
               <SelectValue placeholder={t('Select template')} />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className='w-[var(--radix-select-trigger-width)]'>
               {isAdmin && (
                 <SelectItem value='0'>{t('Custom (no template)')}</SelectItem>
               )}
