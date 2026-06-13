@@ -26,9 +26,21 @@ func GetTokenConfigs(c *gin.Context) {
 			cfg.Password = "***"
 		}
 	}
+
+	// Check if admin allows token reveal
+	revealAllowed := false
+	common.OptionMapRWMutex.RLock()
+	if val, ok := common.OptionMap["TokenRevealEnabled"]; ok {
+		revealAllowed = val == "true" || val == "1"
+	}
+	common.OptionMapRWMutex.RUnlock()
+
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"data":    configs,
+		"meta": gin.H{
+			"reveal_allowed": revealAllowed,
+		},
 	})
 }
 
