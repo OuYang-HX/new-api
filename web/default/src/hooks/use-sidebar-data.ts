@@ -129,6 +129,11 @@ export function useSidebarData(): SidebarData {
             icon: Radio,
           },
           {
+            title: t('Token Templates'),
+            url: '/token-templates',
+            icon: Key,
+          },
+          {
             title: t('Models'),
             url: '/models/metadata',
             icon: Box,

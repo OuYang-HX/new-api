@@ -39,6 +39,22 @@ export const tokenConfigSchema = z.object({
 
 export type TokenConfig = z.infer<typeof tokenConfigSchema>
 
+export const tokenTemplateSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  login_url: z.string(),
+  login_method: z.string().default('POST'),
+  login_headers: z.string().default('{}'),
+  login_body: z.string().default(''),
+  token_json_path: z.string().default(''),
+  refresh_interval: z.number().default(3600),
+  created_time: z.number(),
+  updated_time: z.number(),
+})
+
+export type TokenTemplate = z.infer<typeof tokenTemplateSchema>
+
+
 export interface ApiResponse<T = unknown> {
   success: boolean
   message?: string
@@ -47,7 +63,8 @@ export interface ApiResponse<T = unknown> {
 
 export interface TokenConfigFormData {
   name: string
-  login_url: string
+  template_id?: number
+  login_url?: string
   login_method?: string
   login_headers?: string
   login_body?: string

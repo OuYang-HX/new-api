@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
-import type { TokenConfig, TokenConfigFormData, ApiResponse } from './types'
+import type { TokenConfig, TokenTemplate, TokenConfigFormData, ApiResponse } from './types'
 
 export async function getTokenConfigs(): Promise<ApiResponse<TokenConfig[]>> {
   const res = await api.get('/api/user/token-config/')
@@ -56,5 +56,33 @@ export async function refreshTokenConfig(
 // Admin-only: get all token configs across users
 export async function getAllTokenConfigs(): Promise<ApiResponse<TokenConfig[]>> {
   const res = await api.get('/api/user/token-config/all')
+  return res.data
+}
+
+// Token templates (readable by all users, admin-only write)
+export async function getTokenTemplates(): Promise<ApiResponse<TokenTemplate[]>> {
+  const res = await api.get('/api/user/token-config/templates')
+  return res.data
+}
+
+export async function createTokenTemplate(
+  data: Partial<TokenTemplate>
+): Promise<ApiResponse<TokenTemplate>> {
+  const res = await api.post('/api/user/token-config/templates', data)
+  return res.data
+}
+
+export async function updateTokenTemplate(
+  id: number,
+  data: Partial<TokenTemplate>
+): Promise<ApiResponse<TokenTemplate>> {
+  const res = await api.put(`/api/user/token-config/templates/${id}`, data)
+  return res.data
+}
+
+export async function deleteTokenTemplate(
+  id: number
+): Promise<ApiResponse> {
+  const res = await api.delete(`/api/user/token-config/templates/${id}`)
   return res.data
 }
