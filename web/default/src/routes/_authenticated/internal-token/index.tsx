@@ -19,13 +19,15 @@ For commercial licensing, please contact support@quantumnous.com
 import { createFileRoute, redirect } from '@tanstack/react-router'
 import { useAuthStore } from '@/stores/auth-store'
 import { ROLE } from '@/lib/roles'
+import { useAuthStore } from '@/stores/auth-store'
 import { InternalToken } from '@/custom/features/internal-token'
+import { ROLE } from '@/lib/roles'
 
 export const Route = createFileRoute('/_authenticated/internal-token/')({
   beforeLoad: () => {
     const { auth } = useAuthStore.getState()
 
-    if (!auth.user || auth.user.role < ROLE.ADMIN) {
+    if (!auth.user) {
       throw redirect({
         to: '/403',
       })

@@ -126,10 +126,9 @@ func SetApiRouter(router *gin.Engine) {
 			}
 
 			// custom-hook: register custom API routes
-			custom.RegisterRoutes(userRoute.Group("/", middleware.UserAuth()))
-
 			adminRoute := userRoute.Group("/")
 			adminRoute.Use(middleware.AdminAuth())
+			custom.RegisterRoutes(userRoute.Group("/", middleware.UserAuth()), adminRoute)
 			{
 				adminRoute.GET("/", controller.GetAllUsers)
 				adminRoute.GET("/topup", controller.GetAllTopUps)

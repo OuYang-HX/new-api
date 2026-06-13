@@ -51,13 +51,29 @@ func (tc *TokenCache) Delete(userId int, name string) {
 	delete(tc.cache, cacheKey(userId, name))
 }
 
+// GetByName searches across all users for a token matching the given name.
+// Returns the first match found. Used for shared tokens in channel configs.
+func (tc *TokenCache) GetByName(name string) (string, bool) {
+	tc.mu.RLock()
+	defer tc.mu.RUnlock()
+	suffix := ":" + name
+	for k, v := range tc.cache {
+		if strings.HasSuffix(k, suffix) {
+			return v, true
+		}
+	}
+	return "", false
+}
+
 // GetTokenByName returns the cached token for a userId and config name.
 func GetTokenByName(userId int, name string) (string, bool) {
 	return globalTokenCache.Get(userId, name)
 }
 
 // ResolveTokenVariables replaces all ${token:name} patterns in value with the
-// corresponding cached token for the given userId. Unknown names are left as-is.
+// corresponding cached token. It first looks up by userId, then falls back
+// to a global search across all users (so channel configs can reference tokens
+// created by any user).
 func ResolveTokenVariables(value string, userId int) string {
 	var b strings.Builder
 	rest := value
@@ -74,7 +90,11 @@ func ResolveTokenVariables(value string, userId int) string {
 			break
 		}
 		name := rest[start+8 : start+end]
+		// First try the current user's tokens
 		if tok, ok := globalTokenCache.Get(userId, name); ok {
+			b.WriteString(tok)
+		} else if tok, ok := globalTokenCache.GetByName(name); ok {
+			// Fall back to global search (for shared tokens in channel configs)
 			b.WriteString(tok)
 		} else {
 			b.WriteString(rest[start : start+end+1])

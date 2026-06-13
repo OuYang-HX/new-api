@@ -41,10 +41,13 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   getTokenConfigs,
+  getAllTokenConfigs,
   createTokenConfig,
   updateTokenConfig,
 } from './api'
 import type { TokenConfig, TokenConfigFormData } from './types'
+import { useAuthStore } from '@/stores/auth-store'
+import { ROLE } from '@/lib/roles'
 
 const EMPTY_FORM: TokenConfigFormData = {
   name: '',
@@ -68,14 +71,16 @@ type View = 'list' | 'create' | 'edit'
 export function TokenPicker({ onSelect }: TokenPickerProps) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
+  const { auth } = useAuthStore()
+  const isAdmin = auth.user?.role != null && auth.user.role >= ROLE.ADMIN
   const [open, setOpen] = useState(false)
   const [view, setView] = useState<View>('list')
   const [editingId, setEditingId] = useState<number | null>(null)
   const [form, setForm] = useState<TokenConfigFormData>(EMPTY_FORM)
 
   const { data, isLoading } = useQuery({
-    queryKey: ['token-configs'],
-    queryFn: getTokenConfigs,
+    queryKey: ['token-configs', isAdmin ? 'all' : 'own'],
+    queryFn: isAdmin ? getAllTokenConfigs : getTokenConfigs,
     enabled: open,
   })
 
@@ -213,20 +218,27 @@ export function TokenPicker({ onSelect }: TokenPickerProps) {
                       <span className='truncate font-mono text-xs'>
                         {token.name}
                       </span>
+                      {isAdmin && token.user_id !== auth.user?.id && (
+                        <span className='text-muted-foreground ml-1 text-[10px]'>
+                          (uid:{token.user_id})
+                        </span>
+                      )}
                       {token.enabled === 1 ? (
                         <span className='ml-auto text-[10px] text-green-600'>●</span>
                       ) : (
                         <span className='text-muted-foreground ml-auto text-[10px]'>○</span>
                       )}
                     </button>
-                    <button
-                      type='button'
-                      className='text-muted-foreground hover:text-foreground shrink-0 rounded p-0.5 transition-colors'
-                      onClick={(e) => { e.stopPropagation(); openEdit(token) }}
-                      title={t('Edit')}
-                    >
-                      <Pencil className='h-3 w-3' />
-                    </button>
+                    {token.user_id === auth.user?.id && (
+                      <button
+                        type='button'
+                        className='text-muted-foreground hover:text-foreground shrink-0 rounded p-0.5 transition-colors'
+                        onClick={(e) => { e.stopPropagation(); openEdit(token) }}
+                        title={t('Edit')}
+                      >
+                        <Pencil className='h-3 w-3' />
+                      </button>
+                    )}
                   </div>
                 ))
               )}
