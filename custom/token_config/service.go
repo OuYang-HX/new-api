@@ -164,7 +164,36 @@ func RefreshTokenConfig(id int) (*TokenConfig, error) {
 }
 
 // fetchToken performs the login request described by cfg and extracts the token.
+// If cfg has a TemplateId, the template's fields are used as defaults,
+// with cfg's own fields overriding when non-empty.
 func fetchToken(cfg *TokenConfig) (token string, expiresAt int64, err error) {
+	// Resolve effective config by merging template defaults
+	effective := cfg
+	if cfg.TemplateId > 0 {
+		tmpl, tmplErr := GetTokenTemplateById(cfg.TemplateId)
+		if tmplErr != nil {
+			return "", 0, fmt.Errorf("load template %d: %w", cfg.TemplateId, tmplErr)
+		}
+		// Template provides defaults; cfg's own fields override when non-empty
+		if effective.LoginURL == "" {
+			effective.LoginURL = tmpl.LoginURL
+		}
+		if effective.LoginMethod == "" || effective.LoginMethod == "POST" && tmpl.LoginMethod != "" {
+			effective.LoginMethod = tmpl.LoginMethod
+		}
+		if effective.LoginHeaders == "" {
+			effective.LoginHeaders = tmpl.LoginHeaders
+		}
+		if effective.LoginBody == "" {
+			effective.LoginBody = tmpl.LoginBody
+		}
+		if effective.TokenJSONPath == "" {
+			effective.TokenJSONPath = tmpl.TokenJSONPath
+		}
+		if effective.RefreshInterval == 0 || effective.RefreshInterval == 3600 && tmpl.RefreshInterval > 0 {
+			effective.RefreshInterval = tmpl.RefreshInterval
+		}
+	}
 	// Build request body with variable substitution
 	body := cfg.LoginBody
 	body = strings.ReplaceAll(body, "{username}", cfg.Username)

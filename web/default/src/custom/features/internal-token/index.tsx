@@ -1,20 +1,6 @@
 /*
 Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
+SPDX-License-Identifier: AGPL-3.0-or-later
 */
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -26,7 +12,6 @@ import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
 import {
   Select,
@@ -57,23 +42,21 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   getTokenConfigs,
+  getTokenTemplates,
   createTokenConfig,
   updateTokenConfig,
   deleteTokenConfig,
   refreshTokenConfig,
 } from './api'
-import type { TokenConfig, TokenConfigFormData } from './types'
+import type { TokenConfig, TokenConfigFormData, TokenTemplate } from './types'
+import { useAuthStore } from '@/stores/auth-store'
+import { ROLE } from '@/lib/roles'
 
 const EMPTY_FORM: TokenConfigFormData = {
   name: '',
-  login_url: '',
-  login_method: 'POST',
-  login_headers: '{}',
-  login_body: '',
+  template_id: 0,
   username: '',
   password: '',
-  token_json_path: '',
-  refresh_interval: 3600,
   enabled: 1,
 }
 
@@ -86,14 +69,29 @@ function maskToken(token: string): string {
 export function InternalToken() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
+  const { auth } = useAuthStore()
+  const isAdmin = auth.user?.role != null && auth.user.role >= ROLE.ADMIN
 
   // Data fetching
-  const { data, isLoading } = useQuery({
+  const { data: configsData, isLoading } = useQuery({
     queryKey: ['token-configs'],
     queryFn: getTokenConfigs,
   })
 
-  const tokenConfigs = (data?.data ?? []) as TokenConfig[]
+  const { data: templatesData } = useQuery({
+    queryKey: ['token-templates'],
+    queryFn: getTokenTemplates,
+  })
+
+  const tokenConfigs = (configsData?.data ?? []) as TokenConfig[]
+  const templates = (templatesData?.data ?? []) as TokenTemplate[]
+
+  // Template lookup helper
+  function getTemplateName(templateId: number): string {
+    if (templateId === 0) return t('Custom')
+    const tmpl = templates.find((t) => t.id === templateId)
+    return tmpl ? tmpl.name : `#${templateId}`
+  }
 
   // Dialog state
   const [formOpen, setFormOpen] = useState(false)
@@ -114,9 +112,7 @@ export function InternalToken() {
         toast.error(res.message ?? t('Operation failed'))
       }
     },
-    onError: () => {
-      toast.error(t('Operation failed'))
-    },
+    onError: () => toast.error(t('Operation failed')),
   })
 
   const updateMutation = useMutation({
@@ -131,9 +127,7 @@ export function InternalToken() {
         toast.error(res.message ?? t('Operation failed'))
       }
     },
-    onError: () => {
-      toast.error(t('Operation failed'))
-    },
+    onError: () => toast.error(t('Operation failed')),
   })
 
   const deleteMutation = useMutation({
@@ -148,9 +142,7 @@ export function InternalToken() {
         toast.error(res.message ?? t('Operation failed'))
       }
     },
-    onError: () => {
-      toast.error(t('Operation failed'))
-    },
+    onError: () => toast.error(t('Operation failed')),
   })
 
   const refreshMutation = useMutation({
@@ -163,9 +155,7 @@ export function InternalToken() {
         toast.error(res.message ?? t('Operation failed'))
       }
     },
-    onError: () => {
-      toast.error(t('Operation failed'))
-    },
+    onError: () => toast.error(t('Operation failed')),
   })
 
   // Handlers
@@ -179,14 +169,9 @@ export function InternalToken() {
     setEditingId(row.id)
     setForm({
       name: row.name,
-      login_url: row.login_url,
-      login_method: row.login_method,
-      login_headers: row.login_headers,
-      login_body: row.login_body,
+      template_id: row.template_id,
       username: row.username,
       password: row.password,
-      token_json_path: row.token_json_path,
-      refresh_interval: row.refresh_interval,
       enabled: row.enabled,
     })
     setFormOpen(true)
@@ -253,9 +238,8 @@ export function InternalToken() {
             <TableHeader>
               <TableRow>
                 <TableHead>{t('Name')}</TableHead>
-                <TableHead>{t('Login URL')}</TableHead>
-                <TableHead>{t('Method')}</TableHead>
-                <TableHead>{t('Refresh Interval')}</TableHead>
+                <TableHead>{t('Template')}</TableHead>
+                <TableHead>{t('Username')}</TableHead>
                 <TableHead>{t('Status')}</TableHead>
                 <TableHead>{t('Current Token')}</TableHead>
                 <TableHead className='text-right'>{t('Actions')}</TableHead>
@@ -265,15 +249,8 @@ export function InternalToken() {
               {tokenConfigs.map((row) => (
                 <TableRow key={row.id}>
                   <TableCell className='font-medium'>{row.name}</TableCell>
-                  <TableCell className='max-w-[200px] truncate'>
-                    {row.login_url}
-                  </TableCell>
-                  <TableCell>{row.login_method}</TableCell>
-                  <TableCell>
-                    {row.refresh_interval >= 3600
-                      ? `${(row.refresh_interval / 3600).toFixed(1)}h`
-                      : `${row.refresh_interval}s`}
-                  </TableCell>
+                  <TableCell>{getTemplateName(row.template_id)}</TableCell>
+                  <TableCell>{row.username || '—'}</TableCell>
                   <TableCell>
                     <Badge variant={row.enabled ? 'default' : 'secondary'}>
                       {row.enabled ? t('Enabled') : t('Disabled')}
@@ -341,6 +318,33 @@ export function InternalToken() {
     >
       <form data-form='token-config' onSubmit={handleSubmit} className='space-y-4'>
         <div className='space-y-2'>
+          <Label htmlFor='template_id'>{t('Template')}</Label>
+          <Select
+            value={form.template_id?.toString() ?? '0'}
+            onValueChange={(val) => updateField('template_id', Number(val))}
+          >
+            <SelectTrigger id='template_id'>
+              <SelectValue placeholder={t('Select template')} />
+            </SelectTrigger>
+            <SelectContent>
+              {isAdmin && (
+                <SelectItem value='0'>{t('Custom (no template)')}</SelectItem>
+              )}
+              {templates.map((tmpl) => (
+                <SelectItem key={tmpl.id} value={tmpl.id.toString()}>
+                  {tmpl.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {templates.length === 0 && (
+            <p className='text-muted-foreground text-xs'>
+              {t('No templates available. Ask your admin to create one first.')}
+            </p>
+          )}
+        </div>
+
+        <div className='space-y-2'>
           <Label htmlFor='name'>{t('Name')}</Label>
           <Input
             id='name'
@@ -350,60 +354,79 @@ export function InternalToken() {
           />
         </div>
 
-        <div className='space-y-2'>
-          <Label htmlFor='login_url'>{t('Login URL')}</Label>
-          <Input
-            id='login_url'
-            value={form.login_url}
-            onChange={(e) => updateField('login_url', e.target.value)}
-            required
-          />
-        </div>
-
-        <div className='space-y-2'>
-          <Label htmlFor='login_method'>{t('Login Method')}</Label>
-          <Select
-            value={form.login_method}
-            onValueChange={(val) => updateField('login_method', val ?? undefined)}
-          >
-            <SelectTrigger id='login_method'>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value='POST'>POST</SelectItem>
-              <SelectItem value='GET'>GET</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className='space-y-2'>
-          <Label htmlFor='login_headers'>{t('Login Headers')}</Label>
-          <Textarea
-            id='login_headers'
-            value={form.login_headers}
-            onChange={(e) => updateField('login_headers', e.target.value)}
-            rows={3}
-            className='font-mono text-xs'
-            placeholder='{"Content-Type": "application/json"}'
-          />
-        </div>
-
-        <div className='space-y-2'>
-          <Label htmlFor='login_body'>{t('Login Body')}</Label>
-          <Textarea
-            id='login_body'
-            value={form.login_body}
-            onChange={(e) => updateField('login_body', e.target.value)}
-            rows={3}
-            className='font-mono text-xs'
-          />
-        </div>
+        {form.template_id === 0 && isAdmin && (
+          <>
+            <div className='space-y-2'>
+              <Label htmlFor='login_url'>{t('Login URL')}</Label>
+              <Input
+                id='login_url'
+                value={form.login_url ?? ''}
+                onChange={(e) => updateField('login_url', e.target.value)}
+                required
+              />
+            </div>
+            <div className='space-y-2'>
+              <Label htmlFor='login_method'>{t('Login Method')}</Label>
+              <Select
+                value={form.login_method ?? 'POST'}
+                onValueChange={(val) => updateField('login_method', val ?? undefined)}
+              >
+                <SelectTrigger id='login_method'>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value='POST'>POST</SelectItem>
+                  <SelectItem value='GET'>GET</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className='space-y-2'>
+              <Label htmlFor='login_headers'>{t('Login Headers')}</Label>
+              <Input
+                id='login_headers'
+                value={form.login_headers ?? '{}'}
+                onChange={(e) => updateField('login_headers', e.target.value)}
+                className='font-mono text-xs'
+              />
+            </div>
+            <div className='space-y-2'>
+              <Label htmlFor='login_body'>{t('Login Body')}</Label>
+              <Input
+                id='login_body'
+                value={form.login_body ?? ''}
+                onChange={(e) => updateField('login_body', e.target.value)}
+                className='font-mono text-xs'
+              />
+            </div>
+            <div className='space-y-2'>
+              <Label htmlFor='token_json_path'>{t('Token JSON Path')}</Label>
+              <Input
+                id='token_json_path'
+                value={form.token_json_path ?? ''}
+                onChange={(e) => updateField('token_json_path', e.target.value)}
+                placeholder='data.access_token'
+              />
+            </div>
+            <div className='space-y-2'>
+              <Label htmlFor='refresh_interval'>{t('Refresh Interval')} (s)</Label>
+              <Input
+                id='refresh_interval'
+                type='number'
+                min={0}
+                value={form.refresh_interval ?? 3600}
+                onChange={(e) =>
+                  updateField('refresh_interval', Number(e.target.value))
+                }
+              />
+            </div>
+          </>
+        )}
 
         <div className='space-y-2'>
           <Label htmlFor='username'>{t('Username')}</Label>
           <Input
             id='username'
-            value={form.username}
+            value={form.username ?? ''}
             onChange={(e) => updateField('username', e.target.value)}
           />
         </div>
@@ -413,31 +436,8 @@ export function InternalToken() {
           <Input
             id='password'
             type='password'
-            value={form.password}
+            value={form.password ?? ''}
             onChange={(e) => updateField('password', e.target.value)}
-          />
-        </div>
-
-        <div className='space-y-2'>
-          <Label htmlFor='token_json_path'>{t('Token JSON Path')}</Label>
-          <Input
-            id='token_json_path'
-            value={form.token_json_path}
-            onChange={(e) => updateField('token_json_path', e.target.value)}
-            placeholder='data.access_token'
-          />
-        </div>
-
-        <div className='space-y-2'>
-          <Label htmlFor='refresh_interval'>{t('Refresh Interval')} (s)</Label>
-          <Input
-            id='refresh_interval'
-            type='number'
-            min={0}
-            value={form.refresh_interval}
-            onChange={(e) =>
-              updateField('refresh_interval', Number(e.target.value))
-            }
           />
         </div>
 

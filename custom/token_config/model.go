@@ -20,6 +20,7 @@ func SetDB(database *gorm.DB) {
 type TokenConfig struct {
 	Id              int            `json:"id" gorm:"primaryKey;autoIncrement"`
 	UserId          int            `json:"user_id" gorm:"index;not null"`
+	TemplateId      int            `json:"template_id" gorm:"index;default:0"`
 	Name            string         `json:"name" gorm:"size:128;not null;uniqueIndex:uk_token_config_name_user_del,priority:2"`
 	LoginURL        string         `json:"login_url,omitempty" gorm:"type:text"`
 	LoginMethod     string         `json:"login_method,omitempty" gorm:"size:16;default:'POST'"`
