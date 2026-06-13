@@ -333,6 +333,11 @@ type responsesStreamInterceptor struct {
 	model      string
 	usage      *dto.Usage
 	fullText   strings.Builder
+	// Tool call tracking for function_call output items
+	toolCalls      []dto.ToolCallResponse // accumulated tool calls
+	currentToolIdx int                    // index of the tool call currently being streamed
+	toolItemStarted bool                  // whether output_item.added was sent for current tool
+	hasTextContent  bool                  // whether any text content was received
 }
 
 func newResponsesStreamInterceptor(w gin.ResponseWriter, model string) *responsesStreamInterceptor {
@@ -403,34 +408,70 @@ func (w *responsesStreamInterceptor) SendStartEvents() {
 
 func (w *responsesStreamInterceptor) SendFinalEvents() {
 	text := w.fullText.String()
+	output := make([]any, 0)
 
-	w.writeSSE("response.output_text.done", map[string]any{
-		"type": "response.output_text.done", "output_index": 0, "content_index": 0, "text": text,
-	})
+	// Build the message output item
+	if w.hasTextContent || len(w.toolCalls) == 0 {
+		w.writeSSE("response.output_text.done", map[string]any{
+			"type": "response.output_text.done", "output_index": 0, "content_index": 0, "text": text,
+		})
 
-	w.writeSSE("response.content_part.done", map[string]any{
-		"type": "response.content_part.done", "output_index": 0, "content_index": 0,
-		"part": map[string]any{"type": "output_text", "text": text},
-	})
+		w.writeSSE("response.content_part.done", map[string]any{
+			"type": "response.content_part.done", "output_index": 0, "content_index": 0,
+			"part": map[string]any{"type": "output_text", "text": text},
+		})
 
-	w.writeSSE("response.output_item.done", map[string]any{
-		"type": "response.output_item.done", "output_index": 0,
-		"item": map[string]any{
+		w.writeSSE("response.output_item.done", map[string]any{
+			"type": "response.output_item.done", "output_index": 0,
+			"item": map[string]any{
+				"type": "message", "id": w.messageID, "status": "completed",
+				"role": "assistant", "content": []any{map[string]any{"type": "output_text", "text": text}},
+			},
+		})
+
+		output = append(output, map[string]any{
 			"type": "message", "id": w.messageID, "status": "completed",
 			"role": "assistant", "content": []any{map[string]any{"type": "output_text", "text": text}},
-		},
-	})
+		})
+	} else {
+		// No text content, close the message item as empty
+		w.writeSSE("response.output_item.done", map[string]any{
+			"type": "response.output_item.done", "output_index": 0,
+			"item": map[string]any{
+				"type": "message", "id": w.messageID, "status": "completed",
+				"role": "assistant", "content": []any{},
+			},
+		})
+	}
+
+	// Close any still-open function_call items and add to output
+	for i, tc := range w.toolCalls {
+		outputIdx := i + 1 // message is at 0, function_calls start at 1
+		if i == w.currentToolIdx && w.toolItemStarted {
+			w.writeSSE("response.function_call_arguments.done", map[string]any{
+				"type": "function_call", "call_id": tc.ID, "output_index": outputIdx,
+			})
+			w.writeSSE("response.output_item.done", map[string]any{
+				"type": "response.output_item.done", "output_index": outputIdx,
+				"item": map[string]any{
+					"type": "function_call", "id": fmt.Sprintf("fc_%s", tc.ID),
+					"call_id": tc.ID, "name": tc.Function.Name,
+					"arguments": tc.Function.Arguments, "status": "completed",
+				},
+			})
+		}
+		output = append(output, map[string]any{
+			"type": "function_call", "id": fmt.Sprintf("fc_%s", tc.ID),
+			"call_id": tc.ID, "name": tc.Function.Name,
+			"arguments": tc.Function.Arguments, "status": "completed",
+		})
+	}
 
 	w.writeSSE("response.completed", map[string]any{
 		"type": "response.completed",
 		"response": map[string]any{
 			"id": w.responseID, "object": "response", "status": "completed", "model": w.model,
-			"output": []any{
-				map[string]any{
-					"type": "message", "id": w.messageID, "status": "completed",
-					"role": "assistant", "content": []any{map[string]any{"type": "output_text", "text": text}},
-				},
-			},
+			"output": output,
 			"usage": map[string]any{
 				"input_tokens": w.usage.PromptTokens, "output_tokens": w.usage.CompletionTokens,
 				"total_tokens": w.usage.TotalTokens,
@@ -448,6 +489,7 @@ func (w *responsesStreamInterceptor) convertChunkToResponsesEvents(chunk *dto.Ch
 		if choice.Delta.Content != nil && *choice.Delta.Content != "" {
 			text := *choice.Delta.Content
 			w.fullText.WriteString(text)
+			w.hasTextContent = true
 			w.writeSSE("response.output_text.delta", map[string]any{
 				"type": "output_text", "text": text, "output_index": 0, "content_index": 0,
 			})
@@ -457,18 +499,88 @@ func (w *responsesStreamInterceptor) convertChunkToResponsesEvents(chunk *dto.Ch
 		if choice.Delta.ReasoningContent != nil && *choice.Delta.ReasoningContent != "" {
 			text := *choice.Delta.ReasoningContent
 			w.fullText.WriteString(text)
+			w.hasTextContent = true
 			w.writeSSE("response.output_text.delta", map[string]any{
 				"type": "output_text", "text": text, "output_index": 0, "content_index": 0,
 			})
 		}
 
-		// Handle tool calls
+		// Handle tool calls — each tool call is a separate output item in Responses API
 		for _, tc := range choice.Delta.ToolCalls {
-			if tc.Function.Name != "" {
-				w.writeSSE("response.function_call_arguments.delta", map[string]any{
-					"type": "function_call", "call_id": tc.ID,
-					"name": tc.Function.Name, "arguments": tc.Function.Arguments,
+			tcIdx := 0
+			if tc.Index != nil {
+				tcIdx = *tc.Index
+			}
+
+			// Accumulate or create tool call entry
+			for len(w.toolCalls) <= tcIdx {
+				w.toolCalls = append(w.toolCalls, dto.ToolCallResponse{
+					ID:   tc.ID,
+					Type: "function",
+					Function: dto.FunctionResponse{
+						Name:      tc.Function.Name,
+						Arguments: tc.Function.Arguments,
+					},
 				})
+			}
+
+			tcEntry := &w.toolCalls[tcIdx]
+
+			// If this chunk has a name, it's the start of a new function_call item
+			if tc.Function.Name != "" {
+				tcEntry.Function.Name = tc.Function.Name
+				if tc.ID != "" {
+					tcEntry.ID = tc.ID
+				}
+				w.currentToolIdx = tcIdx
+				w.toolItemStarted = true
+
+				outputIdx := tcIdx + 1 // message is at index 0
+				w.writeSSE("response.output_item.added", map[string]any{
+					"type": "response.output_item.added", "output_index": outputIdx,
+					"item": map[string]any{
+						"type": "function_call", "id": fmt.Sprintf("fc_%s", tcEntry.ID),
+						"call_id": tcEntry.ID, "name": tcEntry.Function.Name,
+						"arguments": "", "status": "in_progress",
+					},
+				})
+
+				// If there's also arguments in this chunk, send them
+				if tc.Function.Arguments != "" {
+					tcEntry.Function.Arguments += tc.Function.Arguments
+					w.writeSSE("response.function_call_arguments.delta", map[string]any{
+						"type": "function_call", "call_id": tcEntry.ID,
+						"output_index": outputIdx, "arguments": tc.Function.Arguments,
+					})
+				}
+			} else if tc.Function.Arguments != "" {
+				// Arguments continuation chunk
+				tcEntry.Function.Arguments += tc.Function.Arguments
+				outputIdx := tcIdx + 1
+				w.writeSSE("response.function_call_arguments.delta", map[string]any{
+					"type": "function_call", "call_id": tcEntry.ID,
+					"output_index": outputIdx, "arguments": tc.Function.Arguments,
+				})
+			}
+
+			// Handle FinishReason for tool_calls — close the current function_call item
+			if choice.FinishReason != nil && *choice.FinishReason == "tool_calls" && w.toolItemStarted {
+				outputIdx := w.currentToolIdx + 1
+				w.writeSSE("response.function_call_arguments.done", map[string]any{
+					"type": "function_call", "call_id": w.toolCalls[w.currentToolIdx].ID,
+					"output_index": outputIdx,
+				})
+				w.writeSSE("response.output_item.done", map[string]any{
+					"type": "response.output_item.done", "output_index": outputIdx,
+					"item": map[string]any{
+						"type": "function_call", "id": fmt.Sprintf("fc_%s", w.toolCalls[w.currentToolIdx].ID),
+						"call_id": w.toolCalls[w.currentToolIdx].ID,
+						"name": w.toolCalls[w.currentToolIdx].Function.Name,
+						"arguments": w.toolCalls[w.currentToolIdx].Function.Arguments,
+						"status": "completed",
+					},
+				})
+				w.toolItemStarted = false
 			}
 		}
 
