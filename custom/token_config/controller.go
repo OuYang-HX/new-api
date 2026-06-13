@@ -47,7 +47,8 @@ func CreateTokenConfig(c *gin.Context) {
 		})
 		return
 	}
-	if cfg.LoginURL == "" {
+	// If template_id is set, login_url comes from the template
+	if cfg.TemplateId == 0 && cfg.LoginURL == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
 			"message": "login_url is required",
@@ -96,6 +97,7 @@ func UpdateTokenConfig(c *gin.Context) {
 		return
 	}
 	cfg.Name = input.Name
+	cfg.TemplateId = input.TemplateId
 	cfg.LoginURL = input.LoginURL
 	cfg.LoginMethod = input.LoginMethod
 	cfg.LoginHeaders = input.LoginHeaders
