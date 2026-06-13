@@ -324,18 +324,29 @@ export function InternalToken() {
         <div className='space-y-2'>
           <Label htmlFor='template_id'>{t('Template')}</Label>
           <Select
-            value={form.template_id?.toString() ?? (isAdmin ? '0' : '')}
-            onValueChange={(val) => updateField('template_id', Number(val))}
+            value={(() => {
+              if (form.template_id === 0) return '__custom__'
+              const tmpl = templates.find(t => t.id === form.template_id)
+              return tmpl ? tmpl.name : (form.template_id ? '__custom__' : '')
+            })()}
+            onValueChange={(val) => {
+              if (val === '__custom__') {
+                updateField('template_id', 0)
+              } else {
+                const tmpl = templates.find(t => t.name === val)
+                updateField('template_id', tmpl ? tmpl.id : 0)
+              }
+            }}
           >
             <SelectTrigger id='template_id' className='w-full'>
               <SelectValue placeholder={t('Select template')} />
             </SelectTrigger>
             <SelectContent className='w-[var(--radix-select-trigger-width)]'>
               {isAdmin && (
-                <SelectItem value='0'>{t('Custom (no template)')}</SelectItem>
+                <SelectItem value='__custom__'>{t('Custom (no template)')}</SelectItem>
               )}
               {templates.map((tmpl) => (
-                <SelectItem key={tmpl.id} value={tmpl.id.toString()}>
+                <SelectItem key={tmpl.id} value={tmpl.name}>
                   {tmpl.name}
                 </SelectItem>
               ))}
