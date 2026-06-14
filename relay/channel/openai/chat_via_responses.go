@@ -56,7 +56,11 @@ func OaiResponsesToChatHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 	}
 
 	if oaiError := responsesResp.GetOpenAIError(); oaiError != nil && oaiError.Type != "" {
-		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
+		statusCode := resp.StatusCode
+		if statusCode >= 200 && statusCode < 300 {
+			statusCode = http.StatusServiceUnavailable
+		}
+		return nil, types.WithOpenAIError(*oaiError, statusCode)
 	}
 
 	chatId := helper.GetResponseID(c)

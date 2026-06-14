@@ -223,7 +223,12 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 	}
 
 	if oaiError := simpleResponse.GetOpenAIError(); oaiError != nil && oaiError.Type != "" {
-		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
+		statusCode := resp.StatusCode
+		// If upstream returns 200 but body has error, treat as 503 for retry logic
+		if statusCode >= 200 && statusCode < 300 {
+			statusCode = http.StatusServiceUnavailable
+		}
+		return nil, types.WithOpenAIError(*oaiError, statusCode)
 	}
 
 	for _, choice := range simpleResponse.Choices {
@@ -570,7 +575,11 @@ func OpenaiHandlerWithUsage(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 	}
 
 	if oaiError := usageResp.GetOpenAIError(); oaiError != nil && oaiError.Type != "" {
-		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
+		statusCode := resp.StatusCode
+		if statusCode >= 200 && statusCode < 300 {
+			statusCode = http.StatusServiceUnavailable
+		}
+		return nil, types.WithOpenAIError(*oaiError, statusCode)
 	}
 
 	// 写入新的 response body
@@ -763,7 +772,11 @@ func OpenaiImageJSONAsStreamHandler(c *gin.Context, info *relaycommon.RelayInfo,
 	var usageResp dto.SimpleResponse
 	_ = common.Unmarshal(responseBody, &usageResp)
 	if oaiError := usageResp.GetOpenAIError(); oaiError != nil && oaiError.Type != "" {
-		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
+		statusCode := resp.StatusCode
+		if statusCode >= 200 && statusCode < 300 {
+			statusCode = http.StatusServiceUnavailable
+		}
+		return nil, types.WithOpenAIError(*oaiError, statusCode)
 	}
 	normalizeOpenAIUsage(&usageResp.Usage)
 	applyUsagePostProcessing(info, &usageResp.Usage, responseBody)
