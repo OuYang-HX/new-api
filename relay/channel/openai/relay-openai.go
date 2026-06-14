@@ -217,7 +217,12 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 	}
 
 	if oaiError := simpleResponse.GetOpenAIError(); oaiError != nil && oaiError.Type != "" {
-		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
+		statusCode := resp.StatusCode
+		// If upstream returns 200 but body has error, treat as 503 for retry logic
+		if statusCode >= 200 && statusCode < 300 {
+			statusCode = http.StatusServiceUnavailable
+		}
+		return nil, types.WithOpenAIError(*oaiError, statusCode)
 	}
 
 	for _, choice := range simpleResponse.Choices {
@@ -290,3 +295,70 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 
 	return &simpleResponse.Usage, nil
 }
+
+func streamTTSResponse(c *gin.Context, resp *http.Response) {
+	c.Writer.WriteHeaderNow()
+
+	flusher, ok := c.Writer.(http.Flusher)
+	if !ok {
+		logger.LogWarn(c, "streaming not supported")
+		_, err := io.Copy(c.Writer, resp.Body)
+		if err != nil {
+			logger.LogWarn(c, err.Error())
+		}
+		return
+	}
+
+	buffer := make([]byte, 4096)
+	for {
+		n, err := resp.Body.Read(buffer)
+		//logger.LogInfo(c, fmt.Sprintf("streamTTSResponse read %d bytes", n))
+		if n > 0 {
+			if _, writeErr := c.Writer.Write(buffer[:n]); writeErr != nil {
+				logger.LogError(c, writeErr.Error())
+				break
+			}
+			flusher.Flush()
+		}
+		if err != nil {
+			if err != io.EOF {
+				logger.LogError(c, err.Error())
+			}
+			break
+		}
+	}
+}
+
+func OpenaiHandlerWithUsage(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError) {
+	defer service.CloseResponseBodyGracefully(resp)
+
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, types.NewOpenAIError(err, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError)
+	}
+
+	var usageResp dto.SimpleResponse
+	err = common.Unmarshal(responseBody, &usageResp)
+	if err != nil {
+		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+	}
+
+	if oaiError := usageResp.GetOpenAIError(); oaiError != nil && oaiError.Type != "" {
+		statusCode := resp.StatusCode
+		if statusCode >= 200 && statusCode < 300 {
+			statusCode = http.StatusServiceUnavailable
+		}
+		return nil, types.WithOpenAIError(*oaiError, statusCode)
+	}
+
+	// 写入新的 response body
+	service.IOCopyBytesGracefully(c, resp, responseBody)
+
+	normalizeOpenAIUsage(&usageResp.Usage)
+	applyUsagePostProcessing(info, &usageResp.Usage, responseBody)
+	return &usageResp.Usage, nil
+}
+
+// extractMoonshotCachedTokensFromBody 从Moonshot的非标准位置提取cached_tokens
+// Moonshot的流式响应格式: {"choices":[{"usage":{"cached_tokens":111}}]}
+// extractLlamaCachedTokensFromBody 从llama.cpp的非标准位置提取cache_n
