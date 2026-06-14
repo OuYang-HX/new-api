@@ -27,7 +27,7 @@ func OaiResponsesCompactionHandler(c *gin.Context, resp *http.Response) (*dto.Us
 	if oaiError := compactResp.GetOpenAIError(); oaiError != nil && oaiError.Type != "" {
 		statusCode := resp.StatusCode
 		if statusCode >= 200 && statusCode < 300 {
-			statusCode = http.StatusServiceUnavailable
+			statusCode = openAIErrorTypeToStatusCode(oaiError.Type, resp.StatusCode)
 		}
 		return nil, types.WithOpenAIError(*oaiError, statusCode)
 	}
