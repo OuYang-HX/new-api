@@ -33,7 +33,7 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 	if oaiError := responsesResponse.GetOpenAIError(); oaiError != nil && oaiError.Type != "" {
 		statusCode := resp.StatusCode
 		if statusCode >= 200 && statusCode < 300 {
-			statusCode = http.StatusServiceUnavailable
+			statusCode = openAIErrorTypeToStatusCode(oaiError.Type, resp.StatusCode)
 		}
 		return nil, types.WithOpenAIError(*oaiError, statusCode)
 	}

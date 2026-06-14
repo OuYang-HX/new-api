@@ -218,9 +218,8 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 
 	if oaiError := simpleResponse.GetOpenAIError(); oaiError != nil && oaiError.Type != "" {
 		statusCode := resp.StatusCode
-		// If upstream returns 200 but body has error, treat as 503 for retry logic
 		if statusCode >= 200 && statusCode < 300 {
-			statusCode = http.StatusServiceUnavailable
+			statusCode = openAIErrorTypeToStatusCode(oaiError.Type, resp.StatusCode)
 		}
 		return nil, types.WithOpenAIError(*oaiError, statusCode)
 	}
@@ -358,7 +357,26 @@ func OpenaiHandlerWithUsage(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 	applyUsagePostProcessing(info, &usageResp.Usage, responseBody)
 	return &usageResp.Usage, nil
 }
-
-// extractMoonshotCachedTokensFromBody 从Moonshot的非标准位置提取cached_tokens
-// Moonshot的流式响应格式: {"choices":[{"usage":{"cached_tokens":111}}]}
-// extractLlamaCachedTokensFromBody 从llama.cpp的非标准位置提取cache_n
+// openAIErrorTypeToStatusCode maps OpenAI error types to appropriate HTTP status codes
+// when the upstream returns HTTP 200 but the response body contains an error.
+// This allows the retry logic in shouldRetry() to make correct decisions.
+func openAIErrorTypeToStatusCode(errorType string, originalStatusCode int) int {
+	switch errorType {
+	case "server_error":
+		return http.StatusServiceUnavailable // 503 - retryable
+	case "rate_limit_error", "rate_limit_exceeded":
+		return http.StatusTooManyRequests // 429 - retryable
+	case "invalid_request_error":
+		return http.StatusBadRequest // 400 - not retryable
+	case "authentication_error", "auth_error":
+		return http.StatusUnauthorized // 401 - not retryable
+	case "permission_error", "forbidden":
+		return http.StatusForbidden // 403 - not retryable
+	case "not_found_error", "model_not_found":
+		return http.StatusNotFound // 404 - not retryable
+	default:
+		// Unknown error type: treat as server error (retryable)
+		// This is safe because shouldRetry still checks AutomaticRetryStatusCodeRanges
+		return http.StatusServiceUnavailable // 503
+	}
+}
