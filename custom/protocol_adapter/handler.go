@@ -449,7 +449,7 @@ func (w *responsesStreamInterceptor) SendFinalEvents() {
 		outputIdx := i + 1 // message is at 0, function_calls start at 1
 		if i == w.currentToolIdx && w.toolItemStarted {
 			w.writeSSE("response.function_call_arguments.done", map[string]any{
-				"type": "function_call", "call_id": tc.ID, "output_index": outputIdx,
+				"type": "response.function_call_arguments.done", "item_id": fmt.Sprintf("fc_%s", tc.ID), "call_id": tc.ID, "output_index": outputIdx,
 			})
 			w.writeSSE("response.output_item.done", map[string]any{
 				"type": "response.output_item.done", "output_index": outputIdx,
@@ -491,7 +491,7 @@ func (w *responsesStreamInterceptor) convertChunkToResponsesEvents(chunk *dto.Ch
 			w.fullText.WriteString(text)
 			w.hasTextContent = true
 			w.writeSSE("response.output_text.delta", map[string]any{
-				"type": "output_text", "text": text, "output_index": 0, "content_index": 0,
+				"type": "response.output_text.delta", "delta": text, "output_index": 0, "content_index": 0,
 			})
 		}
 
@@ -501,7 +501,7 @@ func (w *responsesStreamInterceptor) convertChunkToResponsesEvents(chunk *dto.Ch
 			w.fullText.WriteString(text)
 			w.hasTextContent = true
 			w.writeSSE("response.output_text.delta", map[string]any{
-				"type": "output_text", "text": text, "output_index": 0, "content_index": 0,
+				"type": "response.output_text.delta", "delta": text, "output_index": 0, "content_index": 0,
 			})
 		}
 
@@ -549,8 +549,8 @@ func (w *responsesStreamInterceptor) convertChunkToResponsesEvents(chunk *dto.Ch
 				if tc.Function.Arguments != "" {
 					tcEntry.Function.Arguments += tc.Function.Arguments
 					w.writeSSE("response.function_call_arguments.delta", map[string]any{
-						"type": "function_call", "call_id": tcEntry.ID,
-						"output_index": outputIdx, "arguments": tc.Function.Arguments,
+						"type": "response.function_call_arguments.delta", "item_id": fmt.Sprintf("fc_%s", tcEntry.ID), "call_id": tcEntry.ID,
+						"output_index": outputIdx, "delta": tc.Function.Arguments,
 					})
 				}
 			} else if tc.Function.Arguments != "" {
@@ -558,8 +558,8 @@ func (w *responsesStreamInterceptor) convertChunkToResponsesEvents(chunk *dto.Ch
 				tcEntry.Function.Arguments += tc.Function.Arguments
 				outputIdx := tcIdx + 1
 				w.writeSSE("response.function_call_arguments.delta", map[string]any{
-					"type": "function_call", "call_id": tcEntry.ID,
-					"output_index": outputIdx, "arguments": tc.Function.Arguments,
+					"type": "response.function_call_arguments.delta", "item_id": fmt.Sprintf("fc_%s", tcEntry.ID), "call_id": tcEntry.ID,
+					"output_index": outputIdx, "delta": tc.Function.Arguments,
 				})
 			}
 
@@ -567,7 +567,7 @@ func (w *responsesStreamInterceptor) convertChunkToResponsesEvents(chunk *dto.Ch
 			if choice.FinishReason != nil && *choice.FinishReason == "tool_calls" && w.toolItemStarted {
 				outputIdx := w.currentToolIdx + 1
 				w.writeSSE("response.function_call_arguments.done", map[string]any{
-					"type": "function_call", "call_id": w.toolCalls[w.currentToolIdx].ID,
+					"type": "response.function_call_arguments.done", "item_id": fmt.Sprintf("fc_%s", w.toolCalls[w.currentToolIdx].ID), "call_id": w.toolCalls[w.currentToolIdx].ID,
 					"output_index": outputIdx,
 				})
 				w.writeSSE("response.output_item.done", map[string]any{
