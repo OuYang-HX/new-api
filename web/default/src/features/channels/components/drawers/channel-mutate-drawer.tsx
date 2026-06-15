@@ -2800,7 +2800,7 @@ export function ChannelMutateDrawer({
                                     onSelect={(placeholder) => {
                                       try {
                                         const parsed = JSON.parse(field.value || '{}')
-                                        parsed.Authorization = `Bearer ${placeholder}`
+                                        parsed['X-Auth-Token'] = placeholder
                                         field.onChange(JSON.stringify(parsed, null, 2))
                                       } catch (_e) {
                                         /* append to raw value if not valid JSON */
