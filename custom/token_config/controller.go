@@ -12,10 +12,19 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// GetTokenConfigs returns all token configs for the current user.
+// GetTokenConfigs returns token configs for the current user.
+// Admin users see all users' tokens; normal users see only their own.
 func GetTokenConfigs(c *gin.Context) {
 	userId := c.GetInt("id")
-	configs, err := GetTokenConfigsByUserId(userId)
+	role := c.GetInt("role")
+
+	var configs []*TokenConfig
+	var err error
+	if role >= common.RoleAdminUser {
+		configs, err = GetAllTokenConfigsFromDB()
+	} else {
+		configs, err = GetTokenConfigsByUserId(userId)
+	}
 	if err != nil {
 		common.ApiError(c, err)
 		return
