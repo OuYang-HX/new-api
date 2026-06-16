@@ -178,9 +178,9 @@ export function SystemBehaviorSection({
             render={({ field }) => (
               <SettingsSwitchItem>
                 <SettingsSwitchContent>
-                  <FormLabel>{t('Token Reveal')}</FormLabel>
+                  <FormLabel>{t('Token 复制')}</FormLabel>
                   <FormDescription>
-                    {t('Allow users to view full internal tokens (masked by default)')}
+                    {t('允许用户复制完整的内部 Token 到剪贴板')}
                   </FormDescription>
                 </SettingsSwitchContent>
                 <FormControl>
