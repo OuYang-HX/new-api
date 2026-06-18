@@ -137,6 +137,7 @@ func xunfeiStreamHandler(c *gin.Context, textRequest dto.GeneralOpenAIRequest, a
 	}
 	helper.SetEventStreamHeaders(c)
 	var usage dto.Usage
+	var streamErr *types.NewAPIError
 	c.Stream(func(w io.Writer) bool {
 		select {
 		case xunfeiResponse := <-dataChan:
@@ -155,16 +156,13 @@ func xunfeiStreamHandler(c *gin.Context, textRequest dto.GeneralOpenAIRequest, a
 			c.Render(-1, common.CustomEvent{Data: "data: [DONE]"})
 			return false
 		case xunfeiErr := <-errChan:
+			streamErr = xunfeiErr
 			c.Render(-1, common.CustomEvent{Data: "data: [DONE]"})
 			return false
-		_ = xunfeiErr
 		}
 	})
-	// Check if there was a xunfei-level error
-	select {
-	case xunfeiErr := <-errChan:
-		return nil, xunfeiErr
-	default:
+	if streamErr != nil {
+		return nil, streamErr
 	}
 	return &usage, nil
 }
