@@ -1,4 +1,4 @@
-package controller
+package codex
 
 import (
 	"context"
@@ -11,7 +11,6 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/relay/channel/codex"
 	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-gonic/gin"
@@ -20,7 +19,7 @@ import (
 func GetCodexChannelUsage(c *gin.Context) {
 	fetchCodexChannelWhamData(
 		c,
-		service.FetchCodexWhamUsage,
+		FetchCodexWhamUsage,
 		"failed to fetch codex usage",
 		"获取用量信息失败，请稍后重试",
 	)
@@ -29,7 +28,7 @@ func GetCodexChannelUsage(c *gin.Context) {
 func GetCodexChannelRateLimitResetCredits(c *gin.Context) {
 	fetchCodexChannelWhamData(
 		c,
-		service.FetchCodexWhamRateLimitResetCredits,
+		FetchCodexWhamRateLimitResetCredits,
 		"failed to fetch codex reset credits",
 		"获取重置次数详情失败，请稍后重试",
 	)
@@ -38,7 +37,7 @@ func GetCodexChannelRateLimitResetCredits(c *gin.Context) {
 func ResetCodexChannelUsage(c *gin.Context) {
 	fetchCodexChannelWhamData(
 		c,
-		service.ConsumeCodexWhamRateLimitResetCredit,
+		ConsumeCodexWhamRateLimitResetCredit,
 		"failed to reset codex usage",
 		"重置用量失败，请稍后重试",
 	)
@@ -82,7 +81,7 @@ func fetchCodexChannelWhamData(
 		return
 	}
 
-	oauthKey, err := codex.ParseOAuthKey(strings.TrimSpace(ch.Key))
+	oauthKey, err := ParseOAuthKey(strings.TrimSpace(ch.Key))
 	if err != nil {
 		common.SysError("failed to parse oauth key: " + err.Error())
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": "解析凭证失败，请检查渠道配置"})
@@ -119,7 +118,7 @@ func fetchCodexChannelWhamData(
 		refreshCtx, refreshCancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
 		defer refreshCancel()
 
-		res, refreshErr := service.RefreshCodexOAuthTokenWithProxy(refreshCtx, oauthKey.RefreshToken, ch.GetSetting().Proxy)
+		res, refreshErr := RefreshCodexOAuthTokenWithProxy(refreshCtx, oauthKey.RefreshToken, ch.GetSetting().Proxy)
 		if refreshErr == nil {
 			oauthKey.AccessToken = res.AccessToken
 			oauthKey.RefreshToken = res.RefreshToken

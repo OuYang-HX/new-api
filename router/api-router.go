@@ -3,6 +3,7 @@ package router
 import (
 	"github.com/QuantumNous/new-api/controller"
 	"github.com/QuantumNous/new-api/custom" // custom-hook: decoupled extensions
+	"github.com/QuantumNous/new-api/custom/codex"
 	"github.com/QuantumNous/new-api/middleware"
 
 	// Import oauth package to register providers via init()
@@ -253,10 +254,14 @@ func SetApiRouter(router *gin.Engine) {
 			channelRoute.POST("/fix", controller.FixChannelsAbilities)
 			channelRoute.GET("/fetch_models/:id", controller.FetchUpstreamModels)
 			channelRoute.POST("/fetch_models", middleware.RootAuth(), controller.FetchModels)
+			channelRoute.POST("/codex/oauth/start", codex.StartCodexOAuth)
+			channelRoute.POST("/codex/oauth/complete", codex.CompleteCodexOAuth)
+			channelRoute.POST("/:id/codex/oauth/start", codex.StartCodexOAuthForChannel)
+			channelRoute.POST("/:id/codex/oauth/complete", codex.CompleteCodexOAuthForChannel)
 			channelRoute.POST("/:id/codex/refresh", controller.RefreshCodexChannelCredential)
-			channelRoute.GET("/:id/codex/usage", controller.GetCodexChannelUsage)
-			channelRoute.GET("/:id/codex/usage/reset-credits", controller.GetCodexChannelRateLimitResetCredits)
-			channelRoute.POST("/:id/codex/usage/reset", controller.ResetCodexChannelUsage)
+			channelRoute.GET("/:id/codex/usage", codex.GetCodexChannelUsage)
+			channelRoute.GET("/:id/codex/usage/reset-credits", codex.GetCodexChannelRateLimitResetCredits)
+			channelRoute.POST("/:id/codex/usage/reset", codex.ResetCodexChannelUsage)
 			channelRoute.POST("/ollama/pull", controller.OllamaPullModel)
 			channelRoute.POST("/ollama/pull/stream", controller.OllamaPullModelStream)
 			channelRoute.DELETE("/ollama/delete", controller.OllamaDeleteModel)

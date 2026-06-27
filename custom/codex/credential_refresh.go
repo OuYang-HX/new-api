@@ -1,8 +1,7 @@
-package service
+package codex
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -10,36 +9,14 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 )
 
 type CodexCredentialRefreshOptions struct {
 	ResetCaches bool
 }
 
-type CodexOAuthKey struct {
-	IDToken      string `json:"id_token,omitempty"`
-	AccessToken  string `json:"access_token,omitempty"`
-	RefreshToken string `json:"refresh_token,omitempty"`
-
-	AccountID   string `json:"account_id,omitempty"`
-	LastRefresh string `json:"last_refresh,omitempty"`
-	Email       string `json:"email,omitempty"`
-	Type        string `json:"type,omitempty"`
-	Expired     string `json:"expired,omitempty"`
-}
-
-func parseCodexOAuthKey(raw string) (*CodexOAuthKey, error) {
-	if strings.TrimSpace(raw) == "" {
-		return nil, errors.New("codex channel: empty oauth key")
-	}
-	var key CodexOAuthKey
-	if err := common.Unmarshal([]byte(raw), &key); err != nil {
-		return nil, errors.New("codex channel: invalid oauth key json")
-	}
-	return &key, nil
-}
-
-func RefreshCodexChannelCredential(ctx context.Context, channelID int, opts CodexCredentialRefreshOptions) (*CodexOAuthKey, *model.Channel, error) {
+func RefreshCodexChannelCredential(ctx context.Context, channelID int, opts CodexCredentialRefreshOptions) (*OAuthKey, *model.Channel, error) {
 	ch, err := model.GetChannelById(channelID, true)
 	if err != nil {
 		return nil, nil, err
@@ -51,7 +28,7 @@ func RefreshCodexChannelCredential(ctx context.Context, channelID int, opts Code
 		return nil, nil, fmt.Errorf("channel type is not Codex")
 	}
 
-	oauthKey, err := parseCodexOAuthKey(strings.TrimSpace(ch.Key))
+	oauthKey, err := ParseOAuthKey(strings.TrimSpace(ch.Key))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -97,7 +74,7 @@ func RefreshCodexChannelCredential(ctx context.Context, channelID int, opts Code
 
 	if opts.ResetCaches {
 		model.InitChannelCache()
-		ResetProxyClientCache()
+		service.ResetProxyClientCache()
 	}
 
 	return oauthKey, ch, nil
