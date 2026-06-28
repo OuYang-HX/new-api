@@ -1,4 +1,4 @@
-package service
+package codex
 
 import (
 	"context"
@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 
 	"github.com/bytedance/gopkg/util/gopool"
 )
@@ -101,7 +102,7 @@ func runCodexCredentialAutoRefreshOnce() {
 				continue
 			}
 
-			oauthKey, err := parseCodexOAuthKey(rawKey)
+			oauthKey, err := ParseOAuthKey(rawKey)
 			if err != nil {
 				continue
 			}
@@ -139,7 +140,7 @@ func runCodexCredentialAutoRefreshOnce() {
 			}()
 			model.InitChannelCache()
 		}()
-		ResetProxyClientCache()
+		service.ResetProxyClientCache()
 	}
 
 	if common.DebugEnabled {

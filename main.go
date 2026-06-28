@@ -14,6 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/custom" // custom-hook: decoupled extensions
+	"github.com/QuantumNous/new-api/custom/codex" // custom-hook: codex scheduler injection
 	"github.com/QuantumNous/new-api/controller"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
@@ -116,12 +117,14 @@ func main() {
 		go controller.AutomaticallyUpdateChannels(frequency)
 	}
 
-	// Codex credential auto-refresh check every 10 minutes, refresh when expires within 1 day
-	service.StartCodexCredentialAutoRefreshTask()
+	// custom-hook: Codex credential auto-refresh (moved to custom/codex)
+	codex.StartCodexCredentialAutoRefreshTask()
 
 	// Subscription quota reset task (daily/weekly/monthly/custom)
 	service.StartSubscriptionQuotaResetTask()
-	// custom-hook: start custom background schedulers
+	// custom-hook: inject codex scheduler (avoids import cycle: custom → custom/codex → model → custom)
+	custom.SchedulerFuncs.StartCodexCredentialAutoRefreshTask = codex.StartCodexCredentialAutoRefreshTask
+	// custom-hook: start custom background schedulers (includes codex credential refresh)
 	custom.StartSchedulers()
 
 	// Report this process as a system instance so the System Info page can show

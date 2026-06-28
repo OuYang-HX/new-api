@@ -292,8 +292,6 @@ func migrateDB() error {
 		&SubscriptionOrder{},
 		&UserSubscription{},
 		&SubscriptionPreConsumeRecord{},
-		&CustomOAuthProvider{},
-		&UserOAuthBinding{},
 		&PerfMetric{},
 		&SystemInstance{},
 		&SystemTask{},
@@ -301,7 +299,10 @@ func migrateDB() error {
 		&CasbinRule{},
 		&AuthzRole{},
 	)
-	// custom-hook: register custom model migrations
+	// custom-hook: set custom migration models (avoids import cycle)
+	custom.MigrationModels.CustomOAuthProvider = &CustomOAuthProvider{}
+	custom.MigrationModels.UserOAuthBinding = &UserOAuthBinding{}
+	// custom-hook: register custom model migrations (includes CustomOAuthProvider, UserOAuthBinding, TokenConfig, TokenTemplate)
 	custom.RegisterMigrations(DB)
 	if err != nil {
 		return err
@@ -348,8 +349,6 @@ func migrateDBFast() error {
 		{&SubscriptionOrder{}, "SubscriptionOrder"},
 		{&UserSubscription{}, "UserSubscription"},
 		{&SubscriptionPreConsumeRecord{}, "SubscriptionPreConsumeRecord"},
-		{&CustomOAuthProvider{}, "CustomOAuthProvider"},
-		{&UserOAuthBinding{}, "UserOAuthBinding"},
 		{&PerfMetric{}, "PerfMetric"},
 		{&SystemInstance{}, "SystemInstance"},
 		{&SystemTask{}, "SystemTask"},

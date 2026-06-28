@@ -3,6 +3,7 @@ package router
 import (
 	"github.com/QuantumNous/new-api/controller"
 	"github.com/QuantumNous/new-api/custom" // custom-hook: decoupled extensions
+	"github.com/QuantumNous/new-api/custom/codex"
 	"github.com/QuantumNous/new-api/middleware"
 
 	// Import oauth package to register providers via init()
@@ -13,6 +14,25 @@ import (
 )
 
 func SetApiRouter(router *gin.Engine) {
+	// custom-hook: inject route handlers to avoid import cycles
+	custom.RouteHandlers = custom.RouteHandlers // already zero-initialized
+	custom.RouteHandlers.RefreshCodexChannelCredential = controller.RefreshCodexChannelCredential
+	custom.RouteHandlers.StartCodexOAuth = codex.StartCodexOAuth
+	custom.RouteHandlers.CompleteCodexOAuth = codex.CompleteCodexOAuth
+	custom.RouteHandlers.StartCodexOAuthForChannel = codex.StartCodexOAuthForChannel
+	custom.RouteHandlers.CompleteCodexOAuthForChannel = codex.CompleteCodexOAuthForChannel
+	custom.RouteHandlers.GetCodexChannelUsage = codex.GetCodexChannelUsage
+	custom.RouteHandlers.FetchCustomOAuthDiscovery = controller.FetchCustomOAuthDiscovery
+	custom.RouteHandlers.GetCustomOAuthProviders = controller.GetCustomOAuthProviders
+	custom.RouteHandlers.GetCustomOAuthProvider = controller.GetCustomOAuthProvider
+	custom.RouteHandlers.CreateCustomOAuthProvider = controller.CreateCustomOAuthProvider
+	custom.RouteHandlers.UpdateCustomOAuthProvider = controller.UpdateCustomOAuthProvider
+	custom.RouteHandlers.DeleteCustomOAuthProvider = controller.DeleteCustomOAuthProvider
+	custom.RouteHandlers.GetUserOAuthBindings = controller.GetUserOAuthBindings
+	custom.RouteHandlers.GetUserOAuthBindingsByAdmin = controller.GetUserOAuthBindingsByAdmin
+	custom.RouteHandlers.UnbindCustomOAuth = controller.UnbindCustomOAuth
+	custom.RouteHandlers.UnbindCustomOAuthByAdmin = controller.UnbindCustomOAuthByAdmin
+
 	apiRouter := router.Group("/api")
 	apiRouter.Use(middleware.RouteTag("api"))
 	apiRouter.Use(gzip.Gzip(gzip.DefaultCompression))
@@ -120,22 +140,24 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.GET("/checkin", controller.GetCheckinStatus)
 				selfRoute.POST("/checkin", middleware.TurnstileCheck(), controller.DoCheckin)
 
-				// Custom OAuth bindings
-				selfRoute.GET("/oauth/bindings", controller.GetUserOAuthBindings)
-				selfRoute.DELETE("/oauth/bindings/:provider_id", controller.UnbindCustomOAuth)
+				// Custom OAuth bindings (registered in custom.RegisterRoutes)
+				// Removed: selfRoute.GET("/oauth/bindings", ...)
+				// Removed: selfRoute.DELETE("/oauth/bindings/:provider_id", ...)
 			}
 
-			// custom-hook: register custom API routes
+			// custom-hook: register custom API routes (includes Token Config, Custom OAuth Provider, OAuth Bindings)
 			adminRoute := userRoute.Group("/")
 			adminRoute.Use(middleware.AdminAuth())
-			custom.RegisterRoutes(userRoute.Group("/", middleware.UserAuth()), adminRoute)
+			rootRouter := apiRouter
+			custom.RegisterRoutes(selfRoute.Group("/"), adminRoute.Group("/"), nil, rootRouter)
 			{
 				adminRoute.GET("/", controller.GetAllUsers)
 				adminRoute.GET("/topup", controller.GetAllTopUps)
 				adminRoute.POST("/topup/complete", controller.AdminCompleteTopUp)
 				adminRoute.GET("/search", controller.SearchUsers)
-				adminRoute.GET("/:id/oauth/bindings", controller.GetUserOAuthBindingsByAdmin)
-				adminRoute.DELETE("/:id/oauth/bindings/:provider_id", controller.UnbindCustomOAuthByAdmin)
+				// Admin OAuth bindings (registered in custom.RegisterRoutes)
+				// Removed: adminRoute.GET("/:id/oauth/bindings", ...)
+				// Removed: adminRoute.DELETE("/:id/oauth/bindings/:provider_id", ...)
 				adminRoute.DELETE("/:id/bindings/:binding_type", controller.AdminClearUserBinding)
 				adminRoute.GET("/:id", controller.GetUser)
 				adminRoute.POST("/", controller.CreateUser)
@@ -201,17 +223,7 @@ func SetApiRouter(router *gin.Engine) {
 			optionRoute.GET("/waffo-pancake/subscription-product-options", controller.ListWaffoPancakeSubscriptionProductOptions)
 		}
 
-		// Custom OAuth provider management (root only)
-		customOAuthRoute := apiRouter.Group("/custom-oauth-provider")
-		customOAuthRoute.Use(middleware.RootAuth())
-		{
-			customOAuthRoute.POST("/discovery", controller.FetchCustomOAuthDiscovery)
-			customOAuthRoute.GET("/", controller.GetCustomOAuthProviders)
-			customOAuthRoute.GET("/:id", controller.GetCustomOAuthProvider)
-			customOAuthRoute.POST("/", controller.CreateCustomOAuthProvider)
-			customOAuthRoute.PUT("/:id", controller.UpdateCustomOAuthProvider)
-			customOAuthRoute.DELETE("/:id", controller.DeleteCustomOAuthProvider)
-		}
+		// custom-hook: Custom OAuth provider routes registered in custom.RegisterRoutes()
 		performanceRoute := apiRouter.Group("/performance")
 		performanceRoute.Use(middleware.RootAuth())
 		{

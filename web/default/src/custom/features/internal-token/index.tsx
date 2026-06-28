@@ -193,10 +193,16 @@ export function InternalToken() {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    // Auto-generate name from template + username if not set
+    const submitForm = { ...form }
+    if (!submitForm.name && submitForm.template_id) {
+      const tmpl = templates.find((t) => t.id === submitForm.template_id)
+      submitForm.name = `${tmpl?.name ?? ''}_${submitForm.username ?? ''}`
+    }
     if (editingId !== null) {
-      updateMutation.mutate({ id: editingId, data: form })
+      updateMutation.mutate({ id: editingId, data: submitForm })
     } else {
-      createMutation.mutate(form)
+      createMutation.mutate(submitForm)
     }
   }
 
@@ -250,7 +256,6 @@ export function InternalToken() {
             <TableHeader>
               <TableRow>
                 <TableHead>{t('Name')}</TableHead>
-                {isAdmin && <TableHead>{t('用户')}</TableHead>}
                 <TableHead>{t('Template')}</TableHead>
                 <TableHead>{t('Username')}</TableHead>
                 <TableHead>{t('Status')}</TableHead>
@@ -262,7 +267,6 @@ export function InternalToken() {
               {tokenConfigs.map((row) => (
                 <TableRow key={row.id}>
                   <TableCell className='font-medium'>{row.name}</TableCell>
-                  {isAdmin && <TableCell className='text-muted-foreground text-sm'>{row.user_id}</TableCell>}
                   <TableCell>{getTemplateName(row.template_id)}</TableCell>
                   <TableCell>{row.username || '—'}</TableCell>
                   <TableCell>
@@ -366,6 +370,15 @@ export function InternalToken() {
     >
       <form data-form='token-config' onSubmit={handleSubmit} className='space-y-4'>
         <div className='space-y-2'>
+          <Label htmlFor='name'>{t('Name')}</Label>
+          <Input
+            id='name'
+            value={form.name}
+            onChange={(e) => updateField('name', e.target.value)}
+            required
+          />
+        </div>
+        <div className='space-y-2'>
           <Label htmlFor='template_id'>{t('Template')}</Label>
           <Select
             value={(() => {
@@ -401,16 +414,6 @@ export function InternalToken() {
               {t('No templates available. Ask your admin to create one first.')}
             </p>
           )}
-        </div>
-
-        <div className='space-y-2'>
-          <Label htmlFor='name'>{t('Name')}</Label>
-          <Input
-            id='name'
-            value={form.name}
-            onChange={(e) => updateField('name', e.target.value)}
-            required
-          />
         </div>
 
         {showCustomFields && (
