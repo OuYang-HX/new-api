@@ -34,6 +34,7 @@ import {
   Users,
   Wallet,
 } from 'lucide-react'
+import { useCustomSidebarItems } from '@/custom/sidebar' // custom-hook: decoupled extensions
 import { useTranslation } from 'react-i18next'
 import { ROLE } from '@/lib/roles'
 import { type SidebarData } from '@/components/layout/types'
@@ -46,8 +47,9 @@ import { type SidebarData } from '@/components/layout/types'
  */
 export function useSidebarData(): SidebarData {
   const { t } = useTranslation()
+  const customItems = useCustomSidebarItems()
 
-  return {
+  const base: SidebarData = {
     navGroups: [
       {
         id: 'chat',
@@ -82,6 +84,11 @@ export function useSidebarData(): SidebarData {
           {
             title: t('API Keys'),
             url: '/keys',
+            icon: Key,
+          },
+          {
+            title: t('Internal Token'),
+            url: '/internal-token',
             icon: Key,
           },
           {
@@ -124,6 +131,11 @@ export function useSidebarData(): SidebarData {
             icon: Radio,
           },
           {
+            title: t('Token Templates'),
+            url: '/token-templates',
+            icon: Key,
+          },
+          {
             title: t('Models'),
             url: '/models/metadata',
             icon: Box,
@@ -159,4 +171,16 @@ export function useSidebarData(): SidebarData {
       },
     ],
   }
+
+  // custom-hook: merge custom sidebar items into base groups
+  for (const customGroup of customItems.navGroups) {
+    const baseGroup = base.navGroups.find((g) => g.id === customGroup.id)
+    if (baseGroup) {
+      baseGroup.items = [...baseGroup.items, ...customGroup.items]
+    } else {
+      base.navGroups.push(customGroup)
+    }
+  }
+
+  return base
 }

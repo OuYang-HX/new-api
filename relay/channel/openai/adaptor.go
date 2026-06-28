@@ -162,6 +162,17 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 	case constant.ChannelTypeCustom:
 		url := info.ChannelBaseUrl
 		url = strings.Replace(url, "{model}", info.UpstreamModelName, -1)
+		// Handle request path: strip /v1 prefix and append to base URL
+		requestPath := info.RequestURLPath
+		if strings.HasPrefix(requestPath, "/v1") {
+			requestPath = requestPath[3:]
+		}
+		if requestPath != "" && !strings.HasSuffix(url, "/") && !strings.HasPrefix(requestPath, "/") {
+			url = url + "/"
+		}
+		if requestPath != "" && !strings.HasSuffix(url, requestPath) {
+			url = url + requestPath
+		}
 		return url, nil
 	default:
 		if (info.RelayFormat == types.RelayFormatClaude || info.RelayFormat == types.RelayFormatGemini) &&

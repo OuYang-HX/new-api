@@ -3,6 +3,7 @@
     "360": "360",
     "1000": "1000",
     "10000": "10000",
+    "Internal Token": "内部令牌",
     "_copy": "_复制",
     "，": "，",
     ", and": "，和",
@@ -1950,7 +1951,7 @@
     "footer.columns.related.links.oneApi": "One API",
     "footer.columns.related.title": "相关项目",
     "footer.defaultCopyright": "版权所有。",
-    "footer.new\u0061pi.projectAttributionSuffix": "版权所有，由项目贡献者设计与开发。",
+    "footer.newapi.projectAttributionSuffix": "版权所有，由项目贡献者设计与开发。",
     "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment": "对于 2025 年 5 月 10 日之后添加的渠道，在部署时无需从模型名称中移除 \".\"",
     "For private deployments, format: https://fastgpt.run/api/openapi": "对于私有部署，格式为：https://fastgpt.run/api/openapi",
     "Force a syntactically valid JSON response": "强制返回语法合法的 JSON",
@@ -4978,5 +4979,11 @@
     "Zhipu": "智谱",
     "Zhipu V4": "智谱 V4",
     "Zoom": "缩放"
-  }
+  },
+  "Insert Token": "插入令牌",
+  "Internal token value": "内部令牌值",
+  "Select a token to insert as ${token:name}": "选择令牌以 ${token:name} 格式插入",
+  "No tokens configured": "未配置令牌",
+  "Create Token": "创建令牌",
+  "Edit Token": "编辑令牌"
 }
