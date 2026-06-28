@@ -26,9 +26,21 @@ func GetTokenConfigs(c *gin.Context) {
 			cfg.Password = "***"
 		}
 	}
+
+	// Check if admin allows token reveal
+	revealAllowed := false
+	common.OptionMapRWMutex.RLock()
+	if val, ok := common.OptionMap["TokenRevealEnabled"]; ok {
+		revealAllowed = val == "true" || val == "1"
+	}
+	common.OptionMapRWMutex.RUnlock()
+
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"data":    configs,
+		"meta": gin.H{
+			"reveal_allowed": revealAllowed,
+		},
 	})
 }
 
@@ -47,7 +59,8 @@ func CreateTokenConfig(c *gin.Context) {
 		})
 		return
 	}
-	if cfg.LoginURL == "" {
+	// If template_id is set, login_url comes from the template
+	if cfg.TemplateId == 0 && cfg.LoginURL == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
 			"message": "login_url is required",
@@ -96,6 +109,7 @@ func UpdateTokenConfig(c *gin.Context) {
 		return
 	}
 	cfg.Name = input.Name
+	cfg.TemplateId = input.TemplateId
 	cfg.LoginURL = input.LoginURL
 	cfg.LoginMethod = input.LoginMethod
 	cfg.LoginHeaders = input.LoginHeaders

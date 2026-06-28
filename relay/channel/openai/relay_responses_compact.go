@@ -25,7 +25,11 @@ func OaiResponsesCompactionHandler(c *gin.Context, resp *http.Response) (*dto.Us
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
 	if oaiError := compactResp.GetOpenAIError(); oaiError != nil && oaiError.Type != "" {
-		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
+		statusCode := resp.StatusCode
+		if statusCode >= 200 && statusCode < 300 {
+			statusCode = openAIErrorTypeToStatusCode(oaiError.Type, resp.StatusCode)
+		}
+		return nil, types.WithOpenAIError(*oaiError, statusCode)
 	}
 
 	service.IOCopyBytesGracefully(c, resp, responseBody)

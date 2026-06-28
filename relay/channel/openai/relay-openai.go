@@ -217,7 +217,11 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 	}
 
 	if oaiError := simpleResponse.GetOpenAIError(); oaiError != nil && oaiError.Type != "" {
-		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
+		statusCode := resp.StatusCode
+		if statusCode >= 200 && statusCode < 300 {
+			statusCode = openAIErrorTypeToStatusCode(oaiError.Type, resp.StatusCode)
+		}
+		return nil, types.WithOpenAIError(*oaiError, statusCode)
 	}
 
 	for _, choice := range simpleResponse.Choices {
@@ -289,4 +293,90 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 	service.IOCopyBytesGracefully(c, resp, responseBody)
 
 	return &simpleResponse.Usage, nil
+}
+
+func streamTTSResponse(c *gin.Context, resp *http.Response) {
+	c.Writer.WriteHeaderNow()
+
+	flusher, ok := c.Writer.(http.Flusher)
+	if !ok {
+		logger.LogWarn(c, "streaming not supported")
+		_, err := io.Copy(c.Writer, resp.Body)
+		if err != nil {
+			logger.LogWarn(c, err.Error())
+		}
+		return
+	}
+
+	buffer := make([]byte, 4096)
+	for {
+		n, err := resp.Body.Read(buffer)
+		//logger.LogInfo(c, fmt.Sprintf("streamTTSResponse read %d bytes", n))
+		if n > 0 {
+			if _, writeErr := c.Writer.Write(buffer[:n]); writeErr != nil {
+				logger.LogError(c, writeErr.Error())
+				break
+			}
+			flusher.Flush()
+		}
+		if err != nil {
+			if err != io.EOF {
+				logger.LogError(c, err.Error())
+			}
+			break
+		}
+	}
+}
+
+func OpenaiHandlerWithUsage(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError) {
+	defer service.CloseResponseBodyGracefully(resp)
+
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, types.NewOpenAIError(err, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError)
+	}
+
+	var usageResp dto.SimpleResponse
+	err = common.Unmarshal(responseBody, &usageResp)
+	if err != nil {
+		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+	}
+
+	if oaiError := usageResp.GetOpenAIError(); oaiError != nil && oaiError.Type != "" {
+		statusCode := resp.StatusCode
+		if statusCode >= 200 && statusCode < 300 {
+			statusCode = http.StatusServiceUnavailable
+		}
+		return nil, types.WithOpenAIError(*oaiError, statusCode)
+	}
+
+	// 写入新的 response body
+	service.IOCopyBytesGracefully(c, resp, responseBody)
+
+	normalizeOpenAIUsage(&usageResp.Usage)
+	applyUsagePostProcessing(info, &usageResp.Usage, responseBody)
+	return &usageResp.Usage, nil
+}
+// openAIErrorTypeToStatusCode maps OpenAI error types to appropriate HTTP status codes
+// when the upstream returns HTTP 200 but the response body contains an error.
+// This allows the retry logic in shouldRetry() to make correct decisions.
+func openAIErrorTypeToStatusCode(errorType string, originalStatusCode int) int {
+	switch errorType {
+	case "server_error":
+		return http.StatusServiceUnavailable // 503 - retryable
+	case "rate_limit_error", "rate_limit_exceeded":
+		return http.StatusTooManyRequests // 429 - retryable
+	case "invalid_request_error":
+		return http.StatusBadRequest // 400 - not retryable
+	case "authentication_error", "auth_error":
+		return http.StatusUnauthorized // 401 - not retryable
+	case "permission_error", "forbidden":
+		return http.StatusForbidden // 403 - not retryable
+	case "not_found_error", "model_not_found":
+		return http.StatusNotFound // 404 - not retryable
+	default:
+		// Unknown error type: treat as server error (retryable)
+		// This is safe because shouldRetry still checks AutomaticRetryStatusCodeRanges
+		return http.StatusServiceUnavailable // 503
+	}
 }
