@@ -127,6 +127,9 @@ func main() {
 	// custom-hook: start custom background schedulers (includes codex credential refresh)
 	custom.StartSchedulers()
 
+	// custom-hook: initialize protocol adapter (must be before router setup)
+	custom.InitProtocolAdapter(controller.Relay, model.GetEnabledModels)
+
 	// Report this process as a system instance so the System Info page can show
 	// all currently alive nodes in multi-instance deployments.
 	service.StartSystemInstanceReporter()

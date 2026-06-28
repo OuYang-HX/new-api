@@ -9,7 +9,9 @@ import (
 	"net/http"
 	"net/url"
 
+	"github.com/QuantumNous/new-api/custom/protocol_adapter"
 	"github.com/QuantumNous/new-api/custom/token_config"
+	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -181,4 +183,30 @@ func ResolveTokenVariables(value string, userId int) string {
 // supports wildcard patterns in NO_PROXY (e.g. *.huawei.com, 10.*).
 func ProxyFromEnvironmentWithWildcard(req *http.Request) (*url.URL, error) {
 	return proxyFromEnvironmentWithWildcard(req)
+}
+
+// InitProtocolAdapter initializes the protocol adapter by injecting the relay function
+// and the enabled models function. This must be called before RegisterRelayRoutes
+// to avoid nil function calls.
+func InitProtocolAdapter(relayFunc func(c *gin.Context, relayFormat types.RelayFormat), enabledModelsFunc func() []string) {
+	protocol_adapter.SetRelayFunc(relayFunc)
+	protocol_adapter.SetEnabledModelsFn(enabledModelsFunc)
+}
+
+// RegisterRelayRoutes registers custom relay routes on the given router group.
+// The router group should have TokenAuth and Distribute middleware already applied.
+func RegisterRelayRoutes(relayRouter *gin.RouterGroup) {
+	// Codex CLI protocol adapter: /v1/codex/responses → chat/completions → Responses format
+	relayRouter.POST("/codex/responses", protocol_adapter.HandleCodexResponses)
+	relayRouter.POST("/codex/responses/compact", protocol_adapter.HandleCodexResponses)
+
+	// Claude Code CLI protocol adapter: /v1/claude/messages
+	relayRouter.POST("/claude/messages", protocol_adapter.HandleClaudeMessages)
+}
+
+// HandleCodexModels is a thin wrapper to expose HandleCodexModels without
+// importing protocol_adapter from the router package (avoids pulling in
+// unnecessary dependencies).
+func HandleCodexModels(c *gin.Context) {
+	protocol_adapter.HandleCodexModels(c)
 }

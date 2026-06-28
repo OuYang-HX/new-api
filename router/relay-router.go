@@ -3,6 +3,7 @@ package router
 import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/controller"
+	"github.com/QuantumNous/new-api/custom" // custom-hook: decoupled extensions
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/relay"
 	"github.com/QuantumNous/new-api/types"
@@ -40,6 +41,11 @@ func SetRelayRouter(router *gin.Engine) {
 			}
 		})
 	}
+	// custom-hook: Codex CLI models endpoint (same auth as /v1/models)
+	codexModelsRouter := router.Group("/v1/codex/models")
+	codexModelsRouter.Use(middleware.RouteTag("relay"))
+	codexModelsRouter.Use(middleware.TokenAuth())
+	codexModelsRouter.GET("", custom.HandleCodexModels)
 
 	geminiRouter := router.Group("/v1beta/models")
 	geminiRouter.Use(middleware.RouteTag("relay"))
@@ -163,6 +169,8 @@ func SetRelayRouter(router *gin.Engine) {
 		httpRouter.POST("/fine-tunes/:id/cancel", controller.RelayNotImplemented)
 		httpRouter.GET("/fine-tunes/:id/events", controller.RelayNotImplemented)
 		httpRouter.DELETE("/models/:model", controller.RelayNotImplemented)
+		// custom-hook: register custom protocol adapter relay routes
+		custom.RegisterRelayRoutes(httpRouter)
 	}
 
 	relayMjRouter := router.Group("/mj")
