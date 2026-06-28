@@ -6,7 +6,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { Plus, Pencil, Trash2, RefreshCw, Eye, EyeOff } from 'lucide-react'
+import { Plus, Pencil, Trash2, RefreshCw, Copy, Check } from 'lucide-react'
 import { SectionPageLayout } from '@/components/layout'
 import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/dialog'
@@ -105,7 +105,7 @@ export function InternalToken() {
   const [editingId, setEditingId] = useState<number | null>(null)
   const [deletingId, setDeletingId] = useState<number | null>(null)
   const [form, setForm] = useState<TokenConfigFormData>(EMPTY_FORM)
-  const [revealedIds, setRevealedIds] = useState<Set<number>>(new Set())
+  const [copiedId, setCopiedId] = useState<number | null>(null)
 
   // Mutations
   const createMutation = useMutation({
@@ -268,7 +268,7 @@ export function InternalToken() {
                     </Badge>
                   </TableCell>
                   <TableCell className='font-mono text-xs'>
-                    {revealAllowed && revealedIds.has(row.id) ? revealToken(row.current_token) : maskToken(row.current_token)}
+                    {maskToken(row.current_token)}
                   </TableCell>
                   <TableCell className='text-right'>
                     <div className='flex items-center justify-end gap-1'>
@@ -277,16 +277,14 @@ export function InternalToken() {
                           variant='ghost'
                           size='icon'
                           onClick={() => {
-                            setRevealedIds(prev => {
-                              const next = new Set(prev)
-                              if (next.has(row.id)) next.delete(row.id)
-                              else next.add(row.id)
-                              return next
+                            navigator.clipboard.writeText(revealToken(row.current_token)).then(() => {
+                              setCopiedId(row.id)
+                              setTimeout(() => setCopiedId(null), 2000)
                             })
                           }}
-                          title={revealedIds.has(row.id) ? t('Hide token') : t('Show token')}
+                          title={copiedId === row.id ? t('Copied') : t('Copy token')}
                         >
-                          {revealedIds.has(row.id) ? <EyeOff className='h-4 w-4' /> : <Eye className='h-4 w-4' />}
+                          {copiedId === row.id ? <Check className='h-4 w-4 text-green-500' /> : <Copy className='h-4 w-4' />}
                         </Button>
                       )}
                       <Button

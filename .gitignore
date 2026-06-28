@@ -42,3 +42,6 @@ go.work
 go.work.sum
 new-api-test
 TODO.md
+# Local Pi runtime state
+.atl/
+docs/ALIYUN_DEPLOYMENT.md
