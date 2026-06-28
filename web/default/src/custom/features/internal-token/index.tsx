@@ -277,10 +277,25 @@ export function InternalToken() {
                           variant='ghost'
                           size='icon'
                           onClick={() => {
-                            navigator.clipboard.writeText(revealToken(row.current_token)).then(() => {
+                            const text = revealToken(row.current_token)
+                            // navigator.clipboard requires HTTPS, fallback to execCommand for HTTP
+                            if (navigator.clipboard && window.isSecureContext) {
+                              navigator.clipboard.writeText(text).then(() => {
+                                setCopiedId(row.id)
+                                setTimeout(() => setCopiedId(null), 2000)
+                              })
+                            } else {
+                              const textarea = document.createElement('textarea')
+                              textarea.value = text
+                              textarea.style.position = 'fixed'
+                              textarea.style.left = '-9999px'
+                              document.body.appendChild(textarea)
+                              textarea.select()
+                              document.execCommand('copy')
+                              document.body.removeChild(textarea)
                               setCopiedId(row.id)
                               setTimeout(() => setCopiedId(null), 2000)
-                            })
+                            }
                           }}
                           title={copiedId === row.id ? t('Copied') : t('Copy token')}
                         >
