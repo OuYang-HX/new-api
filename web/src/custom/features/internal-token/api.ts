@@ -19,7 +19,16 @@ For commercial licensing, please contact support@quantumnous.com
 import { api } from '@/lib/api'
 import type { TokenConfig, TokenTemplate, TokenConfigFormData, ApiResponse } from './types'
 
-export async function getTokenConfigs(): Promise<ApiResponse<TokenConfig[]>> {
+export interface TokenConfigListResponse {
+  success: boolean
+  message?: string
+  data: TokenConfig[]
+  meta?: {
+    reveal_allowed: boolean
+  }
+}
+
+export async function getTokenConfigs(): Promise<TokenConfigListResponse> {
   const res = await api.get('/api/user/token-config/')
   return res.data
 }
