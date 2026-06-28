@@ -17,6 +17,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/custom" // custom-hook: decoupled extensions
 	"github.com/QuantumNous/new-api/controller"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
@@ -127,6 +128,8 @@ func main() {
 
 	// Subscription quota reset task (daily/weekly/monthly/custom)
 	service.StartSubscriptionQuotaResetTask()
+	// custom-hook: start custom background schedulers
+	custom.StartSchedulers()
 
 	// Report this process as a system instance so the System Info page can show
 	// all currently alive nodes in multi-instance deployments.
@@ -191,6 +194,23 @@ func main() {
 	server.Use(middleware.Version())
 	server.Use(middleware.I18n())
 	middleware.SetUpLogger(server)
+	// Initialize session store
+	store := cookie.NewStore([]byte(common.SessionSecret))
+	store.Options(sessions.Options{
+		Path:     "/",
+		MaxAge:   2592000, // 30 days
+		HttpOnly: true,
+		Secure:   false,
+		SameSite: http.SameSiteStrictMode,
+	})
+
+	// 根据 PORT 自动生成不同的 session cookie 名称
+	sessionName := "session"
+	if port := os.Getenv("PORT"); port != "" {
+		sessionName = "session_" + port
+	}
+	server.Use(sessions.Sessions(sessionName, store))
+
 	InjectUmamiAnalytics()
 	InjectGoogleAnalytics()
 

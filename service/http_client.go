@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/custom" // custom-hook: decoupled extensions
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/setting/system_setting"
@@ -114,9 +115,9 @@ func clientCacheKey(proxyCacheKey string, policy HTTPTransportPolicy) string {
 }
 
 func InitHttpClient() {
-	policy := defaultHTTPTransportPolicy()
-	httpClient = newDirectHTTPClient(policy, nil)
-	proxyClients.store(clientCacheKey("", policy), httpClient)
+	transport := newRelayHTTPTransport()
+	transport.Proxy = custom.ProxyFromEnvironmentWithWildcard // custom-hook: NO_PROXY wildcard support
+	httpClient = newRelayHTTPClient(transport)
 	ssrfProtectedHTTPClient = newProtectedFetchHTTPClient()
 }
 
