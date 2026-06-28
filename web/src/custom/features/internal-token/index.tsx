@@ -76,6 +76,7 @@ export function InternalToken() {
   const queryClient = useQueryClient()
   const { auth } = useAuthStore()
   const isAdmin = auth.user?.role != null && auth.user.role >= ROLE.ADMIN
+  const currentUserId = auth.user?.id ?? 0
 
   // Data fetching
   const { data: configsData, isLoading } = useQuery({
@@ -249,6 +250,7 @@ export function InternalToken() {
             <TableHeader>
               <TableRow>
                 <TableHead>{t('Name')}</TableHead>
+                {isAdmin && <TableHead>{t('用户')}</TableHead>}
                 <TableHead>{t('Template')}</TableHead>
                 <TableHead>{t('Username')}</TableHead>
                 <TableHead>{t('Status')}</TableHead>
@@ -260,6 +262,7 @@ export function InternalToken() {
               {tokenConfigs.map((row) => (
                 <TableRow key={row.id}>
                   <TableCell className='font-medium'>{row.name}</TableCell>
+                  {isAdmin && <TableCell className='text-muted-foreground text-sm'>{row.user_id}</TableCell>}
                   <TableCell>{getTemplateName(row.template_id)}</TableCell>
                   <TableCell>{row.username || '—'}</TableCell>
                   <TableCell>
@@ -272,7 +275,7 @@ export function InternalToken() {
                   </TableCell>
                   <TableCell className='text-right'>
                     <div className='flex items-center justify-end gap-1'>
-                      {revealAllowed && (
+                      {revealAllowed && row.user_id === currentUserId && (
                         <Button
                           variant='ghost'
                           size='icon'
@@ -302,31 +305,35 @@ export function InternalToken() {
                           {copiedId === row.id ? <Check className='h-4 w-4 text-green-500' /> : <Copy className='h-4 w-4' />}
                         </Button>
                       )}
-                      <Button
-                        variant='ghost'
-                        size='icon'
-                        onClick={() => openEdit(row)}
-                        title={t('Edit')}
-                      >
-                        <Pencil className='h-4 w-4' />
-                      </Button>
-                      <Button
-                        variant='ghost'
-                        size='icon'
-                        onClick={() => refreshMutation.mutate(row.id)}
-                        title={t('Refresh')}
-                        disabled={refreshMutation.isPending}
-                      >
-                        <RefreshCw className='h-4 w-4' />
-                      </Button>
-                      <Button
-                        variant='ghost'
-                        size='icon'
-                        onClick={() => confirmDelete(row.id)}
-                        title={t('Delete')}
-                      >
-                        <Trash2 className='h-4 w-4' />
-                      </Button>
+                      {row.user_id === currentUserId && (
+                        <>
+                          <Button
+                            variant='ghost'
+                            size='icon'
+                            onClick={() => openEdit(row)}
+                            title={t('Edit')}
+                          >
+                            <Pencil className='h-4 w-4' />
+                          </Button>
+                          <Button
+                            variant='ghost'
+                            size='icon'
+                            onClick={() => refreshMutation.mutate(row.id)}
+                            title={t('Refresh')}
+                            disabled={refreshMutation.isPending}
+                          >
+                            <RefreshCw className='h-4 w-4' />
+                          </Button>
+                          <Button
+                            variant='ghost'
+                            size='icon'
+                            onClick={() => confirmDelete(row.id)}
+                            title={t('Delete')}
+                          >
+                            <Trash2 className='h-4 w-4' />
+                          </Button>
+                        </>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>
