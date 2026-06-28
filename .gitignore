@@ -41,3 +41,13 @@ service/relayconvert/chat_responses_live_local_test.go
 service/openaicompat/chat_responses_live_local_test.go
 go.work
 go.work.sum
+new-api-test
+TODO.md
+# Local Pi runtime state
+.atl/
+docs/ALIYUN_DEPLOYMENT.md
+new-api-test
+
+new-api-aliyun
+new-api-bin
+new-api-local

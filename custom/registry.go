@@ -15,24 +15,86 @@ import (
 	"gorm.io/gorm"
 )
 
+// RouteHandlers holds function references to controller handlers that custom routes need.
+// This avoids importing the controller package (which would create import cycles).
+// The caller (router) sets these before calling RegisterRoutes.
+var RouteHandlers struct {
+	// Codex channel credential refresh (gin handler wrapper)
+	RefreshCodexChannelCredential func(c *gin.Context)
+	// Codex OAuth
+	StartCodexOAuth           func(c *gin.Context)
+	CompleteCodexOAuth        func(c *gin.Context)
+	StartCodexOAuthForChannel func(c *gin.Context)
+	CompleteCodexOAuthForChannel func(c *gin.Context)
+	GetCodexChannelUsage      func(c *gin.Context)
+	// Custom OAuth Provider CRUD
+	FetchCustomOAuthDiscovery  func(c *gin.Context)
+	GetCustomOAuthProviders    func(c *gin.Context)
+	GetCustomOAuthProvider     func(c *gin.Context)
+	CreateCustomOAuthProvider  func(c *gin.Context)
+	UpdateCustomOAuthProvider  func(c *gin.Context)
+	DeleteCustomOAuthProvider  func(c *gin.Context)
+	// User OAuth Binding
+	GetUserOAuthBindings        func(c *gin.Context)
+	GetUserOAuthBindingsByAdmin func(c *gin.Context)
+	UnbindCustomOAuth           func(c *gin.Context)
+	UnbindCustomOAuthByAdmin    func(c *gin.Context)
+}
+
+// SchedulerFuncs holds function references for custom schedulers.
+// Set by main.go before calling StartSchedulers.
+var SchedulerFuncs struct {
+	// Codex credential auto-refresh
+	StartCodexCredentialAutoRefreshTask func()
+}
+
+// MigrationModels holds model type references for custom migrations.
+// Set by model/main.go before calling RegisterMigrations.
+var MigrationModels struct {
+	CustomOAuthProvider interface{}
+	UserOAuthBinding    interface{}
+}
+
 // RegisterMigrations appends custom model migrations to the GORM AutoMigrate list.
 // It also initializes the DB instance for custom packages.
 func RegisterMigrations(database *gorm.DB) {
 	token_config.SetDB(database)
 	database.AutoMigrate(&token_config.TokenConfig{})
 	database.AutoMigrate(&token_config.TokenTemplate{})
+	// custom-hook: Custom OAuth Provider and User OAuth Binding models
+	if MigrationModels.CustomOAuthProvider != nil {
+		database.AutoMigrate(MigrationModels.CustomOAuthProvider)
+	}
+	if MigrationModels.UserOAuthBinding != nil {
+		database.AutoMigrate(MigrationModels.UserOAuthBinding)
+	}
 }
 
 // RegisterMigrationsFast initializes the DB instance and returns custom models
 // that should be added to the fast migration list. The caller appends them.
 func RegisterMigrationsFast(database *gorm.DB) []interface{} {
 	token_config.SetDB(database)
-	return []interface{}{&token_config.TokenConfig{}, &token_config.TokenTemplate{}}
+	models := []interface{}{
+		&token_config.TokenConfig{},
+		&token_config.TokenTemplate{},
+	}
+	if MigrationModels.CustomOAuthProvider != nil {
+		models = append(models, MigrationModels.CustomOAuthProvider)
+	}
+	if MigrationModels.UserOAuthBinding != nil {
+		models = append(models, MigrationModels.UserOAuthBinding)
+	}
+	return models
 }
 
-// RegisterRoutes registers custom API routes on the given router group.
-func RegisterRoutes(userRoute *gin.RouterGroup, adminRoute *gin.RouterGroup) {
-	tcRoute := userRoute.Group("/token-config")
+// RegisterRoutes registers custom API routes on the given router groups.
+// selfRoute is the user-protected self route group.
+// adminRoute is the admin-protected user management route group.
+// channelRoute is the admin-protected channel route group (may be nil if not yet created).
+// rootRouter is the top-level API router (for root-only routes).
+func RegisterRoutes(selfRoute *gin.RouterGroup, adminRoute *gin.RouterGroup, channelRoute *gin.RouterGroup, rootRouter *gin.RouterGroup) {
+	// === Token Config routes ===
+	tcRoute := selfRoute.Group("/token-config")
 	tcRoute.GET("/", token_config.GetTokenConfigs)
 	tcRoute.POST("/", token_config.CreateTokenConfig)
 	tcRoute.PUT("/:id", token_config.UpdateTokenConfig)
@@ -47,11 +109,66 @@ func RegisterRoutes(userRoute *gin.RouterGroup, adminRoute *gin.RouterGroup) {
 
 	// Admin-only: get all token configs across users (for channel token picker)
 	adminRoute.GET("/token-config/all", token_config.GetAllTokenConfigs)
+
+	// === Codex OAuth routes (on channel route if available) ===
+	if channelRoute != nil {
+		channelRoute.POST("/codex/oauth/start", RouteHandlers.StartCodexOAuth)
+		channelRoute.POST("/codex/oauth/complete", RouteHandlers.CompleteCodexOAuth)
+		channelRoute.POST("/:id/codex/oauth/start", RouteHandlers.StartCodexOAuthForChannel)
+		channelRoute.POST("/:id/codex/oauth/complete", RouteHandlers.CompleteCodexOAuthForChannel)
+		if RouteHandlers.RefreshCodexChannelCredential != nil {
+			channelRoute.POST("/:id/codex/refresh", RouteHandlers.RefreshCodexChannelCredential)
+		}
+		channelRoute.GET("/:id/codex/usage", RouteHandlers.GetCodexChannelUsage)
+	}
+
+	// === Custom OAuth Provider routes (root only) ===
+	if rootRouter != nil {
+		customOAuthRoute := rootRouter.Group("/custom-oauth-provider")
+		if RouteHandlers.FetchCustomOAuthDiscovery != nil {
+			customOAuthRoute.POST("/discovery", RouteHandlers.FetchCustomOAuthDiscovery)
+		}
+		if RouteHandlers.GetCustomOAuthProviders != nil {
+			customOAuthRoute.GET("/", RouteHandlers.GetCustomOAuthProviders)
+		}
+		if RouteHandlers.GetCustomOAuthProvider != nil {
+			customOAuthRoute.GET("/:id", RouteHandlers.GetCustomOAuthProvider)
+		}
+		if RouteHandlers.CreateCustomOAuthProvider != nil {
+			customOAuthRoute.POST("/", RouteHandlers.CreateCustomOAuthProvider)
+		}
+		if RouteHandlers.UpdateCustomOAuthProvider != nil {
+			customOAuthRoute.PUT("/:id", RouteHandlers.UpdateCustomOAuthProvider)
+		}
+		if RouteHandlers.DeleteCustomOAuthProvider != nil {
+			customOAuthRoute.DELETE("/:id", RouteHandlers.DeleteCustomOAuthProvider)
+		}
+	}
+
+	// === User OAuth Binding routes ===
+	if selfRoute != nil && RouteHandlers.GetUserOAuthBindings != nil {
+		selfRoute.GET("/oauth/bindings", RouteHandlers.GetUserOAuthBindings)
+		if RouteHandlers.UnbindCustomOAuth != nil {
+			selfRoute.DELETE("/oauth/bindings/:provider_id", RouteHandlers.UnbindCustomOAuth)
+		}
+	}
+	if adminRoute != nil {
+		if RouteHandlers.GetUserOAuthBindingsByAdmin != nil {
+			adminRoute.GET("/:id/oauth/bindings", RouteHandlers.GetUserOAuthBindingsByAdmin)
+		}
+		if RouteHandlers.UnbindCustomOAuthByAdmin != nil {
+			adminRoute.DELETE("/:id/oauth/bindings/:provider_id", RouteHandlers.UnbindCustomOAuthByAdmin)
+		}
+	}
 }
 
 // StartSchedulers launches custom background schedulers.
 func StartSchedulers() {
 	go token_config.StartTokenRefreshScheduler()
+	// custom-hook: Codex credential auto-refresh
+	if SchedulerFuncs.StartCodexCredentialAutoRefreshTask != nil {
+		SchedulerFuncs.StartCodexCredentialAutoRefreshTask()
+	}
 }
 
 // ResolveTokenVariables replaces ${token:name} placeholders in a header value
