@@ -68,7 +68,7 @@ export function ChannelTemplates() {
     queryFn: getDisabledChannels,
   })
 
-  const templates = (data?.data ?? []) as TokenTemplate[]
+  const templates = ((data?.data ?? []) as TokenTemplate[]).filter(t => t.channel_template_id > 0)
   const disabledChannels = (disabledChannelsData?.data ?? []) as DisabledChannel[]
 
   const [formOpen, setFormOpen] = useState(false)

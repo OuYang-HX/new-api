@@ -66,7 +66,7 @@ export function TokenTemplates() {
     queryFn: getTokenTemplates,
   })
 
-  const templates = (data?.data ?? []) as TokenTemplate[]
+  const templates = ((data?.data ?? []) as TokenTemplate[]).filter(t => t.login_url)
 
   const [formOpen, setFormOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)

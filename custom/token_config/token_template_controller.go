@@ -36,8 +36,9 @@ func CreateTokenTemplate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "name is required"})
 		return
 	}
-	if t.LoginURL == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "login_url is required"})
+	// Either login_url (token template) or channel_template_id (channel template) is required
+	if t.LoginURL == "" && !t.HasChannelTemplate() {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "login_url or channel_template_id is required"})
 		return
 	}
 	if err := t.Insert(); err != nil {
