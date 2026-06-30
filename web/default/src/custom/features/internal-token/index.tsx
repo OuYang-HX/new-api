@@ -53,8 +53,6 @@ import { useAuthStore } from '@/stores/auth-store'
 import { ROLE } from '@/lib/roles'
 
 const EMPTY_FORM: TokenConfigFormData = {
-  name: '',
-  template_id: undefined,
   username: '',
   password: '',
   enabled: 1,
@@ -176,10 +174,8 @@ export function InternalToken() {
   function openEdit(row: TokenConfig) {
     setEditingId(row.id)
     setForm({
-      name: row.name,
-      template_id: row.template_id,
       username: row.username,
-      password: row.password,
+      password: '', // never prefill password
       enabled: row.enabled,
     })
     setFormOpen(true)
@@ -193,16 +189,10 @@ export function InternalToken() {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    // Auto-generate name from template + username if not set
-    const submitForm = { ...form }
-    if (!submitForm.name && submitForm.template_id) {
-      const tmpl = templates.find((t) => t.id === submitForm.template_id)
-      submitForm.name = `${tmpl?.name ?? ''}_${submitForm.username ?? ''}`
-    }
     if (editingId !== null) {
-      updateMutation.mutate({ id: editingId, data: submitForm })
+      updateMutation.mutate({ id: editingId, data: form })
     } else {
-      createMutation.mutate(submitForm)
+      createMutation.mutate(form)
     }
   }
 
@@ -223,10 +213,6 @@ export function InternalToken() {
   ) {
     setForm((prev) => ({ ...prev, [key]: value }))
   }
-
-  // Whether the form should show the full custom config fields
-  // Only when admin explicitly selects "Custom (no template)"
-  const showCustomFields = isAdmin && form.template_id === 0
 
   const isSubmitting = createMutation.isPending || updateMutation.isPending
 
@@ -255,9 +241,8 @@ export function InternalToken() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>{t('Name')}</TableHead>
-                <TableHead>{t('Template')}</TableHead>
                 <TableHead>{t('Username')}</TableHead>
+                <TableHead>{t('Channels')}</TableHead>
                 <TableHead>{t('Status')}</TableHead>
                 <TableHead>{t('Current Token')}</TableHead>
                 <TableHead className='text-right'>{t('Actions')}</TableHead>
@@ -266,9 +251,14 @@ export function InternalToken() {
             <TableBody>
               {tokenConfigs.map((row) => (
                 <TableRow key={row.id}>
-                  <TableCell className='font-medium'>{row.name}</TableCell>
-                  <TableCell>{getTemplateName(row.template_id)}</TableCell>
-                  <TableCell>{row.username || '—'}</TableCell>
+                  <TableCell className='font-medium'>{row.username}</TableCell>
+                  <TableCell>
+                    {row.channel_id > 0 ? (
+                      <Badge variant='outline'>{t('Channel')} #{row.channel_id}</Badge>
+                    ) : (
+                      <span className='text-muted-foreground'>—</span>
+                    )}
+                  </TableCell>
                   <TableCell>
                     <Badge variant={row.enabled ? 'default' : 'secondary'}>
                       {row.enabled ? t('Enabled') : t('Disabled')}
@@ -369,120 +359,9 @@ export function InternalToken() {
       }
     >
       <form data-form='token-config' onSubmit={handleSubmit} className='space-y-4'>
-        <div className='space-y-2'>
-          <Label htmlFor='name'>{t('Name')}</Label>
-          <Input
-            id='name'
-            value={form.name}
-            onChange={(e) => updateField('name', e.target.value)}
-            required
-          />
-        </div>
-        <div className='space-y-2'>
-          <Label htmlFor='template_id'>{t('Template')}</Label>
-          <Select
-            value={(() => {
-              if (form.template_id === 0) return '__custom__'
-              const tmpl = templates.find(t => t.id === form.template_id)
-              return tmpl ? tmpl.name : (form.template_id ? '__custom__' : '')
-            })()}
-            onValueChange={(val) => {
-              if (val === '__custom__') {
-                updateField('template_id', 0)
-              } else {
-                const tmpl = templates.find(t => t.name === val)
-                updateField('template_id', tmpl ? tmpl.id : 0)
-              }
-            }}
-          >
-            <SelectTrigger id='template_id' className='w-full'>
-              <SelectValue placeholder={t('Select template')} />
-            </SelectTrigger>
-            <SelectContent className='w-[var(--radix-select-trigger-width)]'>
-              {isAdmin && (
-                <SelectItem value='__custom__'>{t('Custom (no template)')}</SelectItem>
-              )}
-              {templates.map((tmpl) => (
-                <SelectItem key={tmpl.id} value={tmpl.name}>
-                  {tmpl.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {templates.length === 0 && !isAdmin && (
-            <p className='text-muted-foreground text-xs'>
-              {t('No templates available. Ask your admin to create one first.')}
-            </p>
-          )}
-        </div>
-
-        {showCustomFields && (
-          <>
-            <div className='space-y-2'>
-              <Label htmlFor='login_url'>{t('Login URL')}</Label>
-              <Input
-                id='login_url'
-                value={form.login_url ?? ''}
-                onChange={(e) => updateField('login_url', e.target.value)}
-                required
-              />
-            </div>
-            <div className='space-y-2'>
-              <Label htmlFor='login_method'>{t('Login Method')}</Label>
-              <Select
-                value={form.login_method ?? 'POST'}
-                onValueChange={(val) => updateField('login_method', val ?? undefined)}
-              >
-                <SelectTrigger id='login_method'>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value='POST'>POST</SelectItem>
-                  <SelectItem value='GET'>GET</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className='space-y-2'>
-              <Label htmlFor='login_headers'>{t('Login Headers')}</Label>
-              <Input
-                id='login_headers'
-                value={form.login_headers ?? '{}'}
-                onChange={(e) => updateField('login_headers', e.target.value)}
-                className='font-mono text-xs'
-              />
-            </div>
-            <div className='space-y-2'>
-              <Label htmlFor='login_body'>{t('Login Body')}</Label>
-              <Input
-                id='login_body'
-                value={form.login_body ?? ''}
-                onChange={(e) => updateField('login_body', e.target.value)}
-                className='font-mono text-xs'
-              />
-            </div>
-            <div className='space-y-2'>
-              <Label htmlFor='token_json_path'>{t('Token JSON Path')}</Label>
-              <Input
-                id='token_json_path'
-                value={form.token_json_path ?? ''}
-                onChange={(e) => updateField('token_json_path', e.target.value)}
-                placeholder='data.access_token'
-              />
-            </div>
-            <div className='space-y-2'>
-              <Label htmlFor='refresh_interval'>{t('Refresh Interval')} (s)</Label>
-              <Input
-                id='refresh_interval'
-                type='number'
-                min={0}
-                value={form.refresh_interval ?? 3600}
-                onChange={(e) =>
-                  updateField('refresh_interval', Number(e.target.value))
-                }
-              />
-            </div>
-          </>
-        )}
+        <p className='text-muted-foreground text-xs mb-2'>
+          {t('Channels will be auto-created from all configured templates.')}
+        </p>
 
         <div className='space-y-2'>
           <Label htmlFor='username'>{t('Username')}</Label>
@@ -490,6 +369,8 @@ export function InternalToken() {
             id='username'
             value={form.username ?? ''}
             onChange={(e) => updateField('username', e.target.value)}
+            required
+            placeholder={t('Company account')}
           />
         </div>
 

@@ -16,64 +16,41 @@ import (
 	"github.com/QuantumNous/new-api/common"
 )
 
-// TokenCache provides a thread-safe in-memory cache for tokens keyed by userId:name.
+// TokenCache provides a thread-safe in-memory cache for tokens keyed by username.
+// The cache key is just the username (company account), which is the unique identifier.
 type TokenCache struct {
 	mu    sync.RWMutex
-	cache map[string]string // key format: "userId:name"
+	cache map[string]string // key format: "username"
 }
 
 var globalTokenCache = &TokenCache{cache: make(map[string]string)}
 
-// cacheKey builds the composite cache key from userId and name.
-func cacheKey(userId int, name string) string {
-	return fmt.Sprintf("%d:%s", userId, name)
-}
-
-// Get returns the cached token value for the given userId and name.
-func (tc *TokenCache) Get(userId int, name string) (string, bool) {
+// Get returns the cached token value for the given username.
+func (tc *TokenCache) Get(username string) (string, bool) {
 	tc.mu.RLock()
 	defer tc.mu.RUnlock()
-	v, ok := tc.cache[cacheKey(userId, name)]
+	v, ok := tc.cache[username]
 	return v, ok
 }
 
-// Set stores a token value under the given userId and name.
-func (tc *TokenCache) Set(userId int, name string, value string) {
+// Set stores a token value under the given username.
+func (tc *TokenCache) Set(username string, value string) {
 	tc.mu.Lock()
 	defer tc.mu.Unlock()
-	tc.cache[cacheKey(userId, name)] = value
+	tc.cache[username] = value
 }
 
-// Delete removes the token for the given userId and name.
-func (tc *TokenCache) Delete(userId int, name string) {
+// Delete removes the token for the given username.
+func (tc *TokenCache) Delete(username string) {
 	tc.mu.Lock()
 	defer tc.mu.Unlock()
-	delete(tc.cache, cacheKey(userId, name))
+	delete(tc.cache, username)
 }
 
-// GetByName searches across all users for a token matching the given name.
-// Returns the first match found. Used for shared tokens in channel configs.
-func (tc *TokenCache) GetByName(name string) (string, bool) {
-	tc.mu.RLock()
-	defer tc.mu.RUnlock()
-	suffix := ":" + name
-	for k, v := range tc.cache {
-		if strings.HasSuffix(k, suffix) {
-			return v, true
-		}
-	}
-	return "", false
-}
-
-// GetTokenByName returns the cached token for a userId and config name.
-func GetTokenByName(userId int, name string) (string, bool) {
-	return globalTokenCache.Get(userId, name)
-}
-
-// ResolveTokenVariables replaces all ${token:name} patterns in value with the
-// corresponding cached token. It first looks up by userId, then falls back
-// to a global search across all users (so channel configs can reference tokens
-// created by any user).
+// ResolveTokenVariables replaces all ${token:username} patterns in value with the
+// corresponding cached token. Username is the company account identifier.
+// If a token is not found in cache, the placeholder is replaced with empty string
+// to avoid leaking unresolved placeholders to upstream APIs.
 func ResolveTokenVariables(value string, userId int) string {
 	var b strings.Builder
 	rest := value
@@ -89,15 +66,16 @@ func ResolveTokenVariables(value string, userId int) string {
 			b.WriteString(rest[start:])
 			break
 		}
-		name := rest[start+8 : start+end]
-		// First try the current user's tokens
-		if tok, ok := globalTokenCache.Get(userId, name); ok {
-			b.WriteString(tok)
-		} else if tok, ok := globalTokenCache.GetByName(name); ok {
-			// Fall back to global search (for shared tokens in channel configs)
+		username := rest[start+8 : start+end]
+		if username == "" || username == "undefined" {
+			// Skip empty or invalid usernames
+			common.SysError(fmt.Sprintf("ResolveTokenVariables: empty or invalid username in placeholder: %s", rest[start:start+end+1]))
+			b.WriteString("")
+		} else if tok, ok := globalTokenCache.Get(username); ok {
 			b.WriteString(tok)
 		} else {
-			b.WriteString(rest[start : start+end+1])
+			common.SysError(fmt.Sprintf("ResolveTokenVariables: token not found for username %q", username))
+			b.WriteString("")
 		}
 		rest = rest[start+end+1:]
 	}
@@ -127,20 +105,20 @@ func refreshAllTokens() {
 	now := common.GetTimestamp()
 	for _, cfg := range configs {
 		if cfg.CurrentToken != "" && cfg.TokenExpiresAt > now {
-			globalTokenCache.Set(cfg.UserId, cfg.Name, cfg.CurrentToken)
+		globalTokenCache.Set(cfg.Username, cfg.CurrentToken)
 			continue
 		}
 		token, expiresAt, err := fetchToken(cfg)
 		if err != nil {
-			common.SysError(fmt.Sprintf("failed to refresh token %s: %v", cfg.Name, err))
+			common.SysError(fmt.Sprintf("failed to refresh token %s: %v", cfg.Username, err))
 			continue
 		}
 		cfg.CurrentToken = token
 		cfg.TokenExpiresAt = expiresAt
 		if err := db.Save(cfg).Error; err != nil {
-			common.SysError(fmt.Sprintf("failed to save token config %s: %v", cfg.Name, err))
+			common.SysError(fmt.Sprintf("failed to save token config %s: %v", cfg.Username, err))
 		}
-		globalTokenCache.Set(cfg.UserId, cfg.Name, token)
+		globalTokenCache.Set(cfg.Username, token)
 	}
 }
 
@@ -159,7 +137,7 @@ func RefreshTokenConfig(id int) (*TokenConfig, error) {
 	if err := db.Save(cfg).Error; err != nil {
 		return nil, fmt.Errorf("failed to save token config: %w", err)
 	}
-	globalTokenCache.Set(cfg.UserId, cfg.Name, token)
+	globalTokenCache.Set(cfg.Username, token)
 	return cfg, nil
 }
 
@@ -338,6 +316,6 @@ func truncateString(s string, maxLen int) string {
 }
 
 // DeleteTokenFromCache removes a token from the in-memory cache by userId and config name.
-func DeleteTokenFromCache(userId int, name string) {
-	globalTokenCache.Delete(userId, name)
+func DeleteTokenFromCache(username string) {
+	globalTokenCache.Delete(username)
 }

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/custom/protocol_adapter"
 	"github.com/QuantumNous/new-api/custom/token_config"
 	"github.com/QuantumNous/new-api/types"
@@ -57,12 +58,32 @@ var MigrationModels struct {
 	UserOAuthBinding    interface{}
 }
 
+// ChannelOperationFuncs holds function references for Channel CRUD operations.
+// These are set by the caller (main.go) before calling RegisterMigrations
+// to avoid import cycles between custom and model packages.
+var ChannelOperationFuncs struct {
+	CloneFromTemplate    func(channelTemplateId int, username string) (int, error)
+	UpdateNameAndKey     func(channelId int, templateName string, username string)
+	Delete               func(channelId int)
+	GetById              func(channelId int) string
+	SyncFromTemplate     func(channelTemplateId int, username string) error
+	GetDisabledChannels  func() []token_config.DisabledChannelItem
+}
+
 // RegisterMigrations appends custom model migrations to the GORM AutoMigrate list.
 // It also initializes the DB instance for custom packages.
 func RegisterMigrations(database *gorm.DB) {
 	token_config.SetDB(database)
+	initChannelOps()
 	database.AutoMigrate(&token_config.TokenConfig{})
 	database.AutoMigrate(&token_config.TokenTemplate{})
+	// Migration: drop NOT NULL on name column (replaced by username as unique identifier)
+	// Only for PostgreSQL/MySQL; SQLite doesn't support ALTER COLUMN DROP NOT NULL
+	if database.Migrator().HasColumn(&token_config.TokenConfig{}, "name") {
+		if !common.UsingMainDatabase(common.DatabaseTypeSQLite) {
+			_ = database.Exec("ALTER TABLE token_configs ALTER COLUMN name DROP NOT NULL").Error
+		}
+	}
 	// custom-hook: Custom OAuth Provider and User OAuth Binding models
 	if MigrationModels.CustomOAuthProvider != nil {
 		database.AutoMigrate(MigrationModels.CustomOAuthProvider)
@@ -76,6 +97,7 @@ func RegisterMigrations(database *gorm.DB) {
 // that should be added to the fast migration list. The caller appends them.
 func RegisterMigrationsFast(database *gorm.DB) []interface{} {
 	token_config.SetDB(database)
+	initChannelOps()
 	models := []interface{}{
 		&token_config.TokenConfig{},
 		&token_config.TokenTemplate{},
@@ -95,6 +117,11 @@ func RegisterMigrationsFast(database *gorm.DB) []interface{} {
 // channelRoute is the admin-protected channel route group (may be nil if not yet created).
 // rootRouter is the top-level API router (for root-only routes).
 func RegisterRoutes(selfRoute *gin.RouterGroup, adminRoute *gin.RouterGroup, channelRoute *gin.RouterGroup, rootRouter *gin.RouterGroup) {
+	// Re-inject channel ops in case they were not set during RegisterMigrations
+	// (model.InitDB calls RegisterMigrations which calls initChannelOps before
+	// main.go sets ChannelOperationFuncs)
+	initChannelOps()
+
 	// === Token Config routes ===
 	tcRoute := selfRoute.Group("/token-config")
 	tcRoute.GET("/", token_config.GetTokenConfigs)
@@ -105,11 +132,13 @@ func RegisterRoutes(selfRoute *gin.RouterGroup, adminRoute *gin.RouterGroup, cha
 
 	// Token templates (admin-only CRUD, but also readable by users for selection)
 	tcRoute.GET("/templates", token_config.GetTokenTemplates)
+	tcRoute.GET("/disabled-channels", token_config.GetDisabledChannels)
+
+	// Admin-only: CRUD templates
 	adminRoute.POST("/token-config/templates", token_config.CreateTokenTemplate)
 	adminRoute.PUT("/token-config/templates/:id", token_config.UpdateTokenTemplate)
 	adminRoute.DELETE("/token-config/templates/:id", token_config.DeleteTokenTemplate)
-
-	// Admin-only: get all token configs across users (for channel token picker)
+	adminRoute.POST("/token-config/templates/:id/rebuild-channels", token_config.RebuildChannelsForTemplate)
 	adminRoute.GET("/token-config/all", token_config.GetAllTokenConfigs)
 
 	// === Codex OAuth routes (on channel route if available) ===
@@ -179,6 +208,30 @@ func ResolveTokenVariables(value string, userId int) string {
 	return token_config.ResolveTokenVariables(value, userId)
 }
 
+// initChannelOps injects the Channel operation functions into the token_config package.
+// If the caller has set ChannelOperationFuncs via main.go, those are used.
+// Otherwise, the functions remain nil and auto-channel-creation is a no-op.
+func initChannelOps() {
+	if ChannelOperationFuncs.CloneFromTemplate != nil {
+		token_config.ChannelOps.CloneFromTemplate = ChannelOperationFuncs.CloneFromTemplate
+	}
+	if ChannelOperationFuncs.UpdateNameAndKey != nil {
+		token_config.ChannelOps.UpdateNameAndKey = ChannelOperationFuncs.UpdateNameAndKey
+	}
+	if ChannelOperationFuncs.Delete != nil {
+		token_config.ChannelOps.Delete = ChannelOperationFuncs.Delete
+	}
+	if ChannelOperationFuncs.GetById != nil {
+		token_config.ChannelOps.GetById = ChannelOperationFuncs.GetById
+	}
+	if ChannelOperationFuncs.SyncFromTemplate != nil {
+		token_config.ChannelOps.SyncFromTemplate = ChannelOperationFuncs.SyncFromTemplate
+	}
+	if ChannelOperationFuncs.GetDisabledChannels != nil {
+		token_config.ChannelOps.GetDisabledChannels = ChannelOperationFuncs.GetDisabledChannels
+	}
+}
+
 // ProxyFromEnvironmentWithWildcard is like http.ProxyFromEnvironment but
 // supports wildcard patterns in NO_PROXY (e.g. *.huawei.com, 10.*).
 func ProxyFromEnvironmentWithWildcard(req *http.Request) (*url.URL, error) {
@@ -203,10 +256,18 @@ func RegisterRelayRoutes(relayRouter *gin.RouterGroup) {
 	// Claude Code CLI protocol adapter: /v1/claude/messages
 	relayRouter.POST("/claude/messages", protocol_adapter.HandleClaudeMessages)
 }
-
 // HandleCodexModels is a thin wrapper to expose HandleCodexModels without
 // importing protocol_adapter from the router package (avoids pulling in
 // unnecessary dependencies).
 func HandleCodexModels(c *gin.Context) {
 	protocol_adapter.HandleCodexModels(c)
+}
+
+// SyncChannelsFromChannelTemplate is called when a channel is updated via the admin UI.
+// If the updated channel is used as a template by any TokenTemplate, all auto-created
+// channels are synced with the updated fields.
+func SyncChannelsFromChannelTemplate(channelId int) {
+	if token_config.ChannelOps.SyncFromTemplate != nil {
+		_ = token_config.ChannelOps.SyncFromTemplate(channelId, "")
+	}
 }

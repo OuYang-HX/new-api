@@ -15,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/custom" // custom-hook: decoupled extensions
 	"github.com/QuantumNous/new-api/custom/codex" // custom-hook: codex scheduler injection
+	"github.com/QuantumNous/new-api/custom/token_config" // custom-hook: token config channel ops
 	"github.com/QuantumNous/new-api/controller"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
@@ -124,6 +125,14 @@ func main() {
 	service.StartSubscriptionQuotaResetTask()
 	// custom-hook: inject codex scheduler (avoids import cycle: custom → custom/codex → model → custom)
 	custom.SchedulerFuncs.StartCodexCredentialAutoRefreshTask = codex.StartCodexCredentialAutoRefreshTask
+	// custom-hook: inject channel operation functions (avoids import cycle: custom → model → custom)
+	// IMPORTANT: Must be set BEFORE model.InitDB() which calls custom.RegisterMigrations → initChannelOps
+	custom.ChannelOperationFuncs.CloneFromTemplate = cloneChannelFromTemplate
+	custom.ChannelOperationFuncs.UpdateNameAndKey = updateChannelNameAndKey
+	custom.ChannelOperationFuncs.Delete = deleteChannelById
+	custom.ChannelOperationFuncs.GetById = getChannelNameById
+	custom.ChannelOperationFuncs.SyncFromTemplate = syncChannelsFromTemplate
+	custom.ChannelOperationFuncs.GetDisabledChannels = getDisabledChannels
 	// custom-hook: start custom background schedulers (includes codex credential refresh)
 	custom.StartSchedulers()
 
@@ -356,3 +365,145 @@ func InitResources() error {
 
 	return nil
 }
+
+// cloneChannelFromTemplate clones a disabled channel (the "channel template") and creates
+// a new enabled channel for the given user. The clone gets:
+//   - Key replaced by ${token:<username>}
+//   - Name set to "<template_channel_name>-<username>"
+//   - Status set to enabled (1)
+//   - HeaderOverride: ${token:self} replaced with ${token:<username>}
+// This function lives in main to avoid import cycles (custom -> model -> custom).
+func cloneChannelFromTemplate(channelTemplateId int, username string) (int, error) {
+	tmpl, err := model.GetChannelById(channelTemplateId, true)
+	if err != nil {
+		return 0, fmt.Errorf("load channel template %d: %w", channelTemplateId, err)
+	}
+
+	channel := *tmpl // shallow copy all fields
+	channel.Id = 0    // let GORM auto-generate
+	channel.Key = fmt.Sprintf("${token:%s}", username)
+	channel.Name = fmt.Sprintf("%s-%s", tmpl.Name, username)
+	channel.Status = common.ChannelStatusEnabled
+	channel.UsedQuota = 0
+	channel.Balance = 0
+	channel.BalanceUpdatedTime = 0
+	channel.TestTime = 0
+	channel.ResponseTime = 0
+	channel.CreatedTime = common.GetTimestamp()
+	channel.ChannelInfo = model.ChannelInfo{} // reset multi-key state
+
+	// Replace ${token:self} in header_override with the actual username reference
+	if channel.HeaderOverride != nil && *channel.HeaderOverride != "" {
+		ho := strings.ReplaceAll(*channel.HeaderOverride, "${token:self}", fmt.Sprintf("${token:%s}", username))
+		channel.HeaderOverride = &ho
+	}
+
+	if err := channel.Insert(); err != nil {
+		return 0, fmt.Errorf("insert channel: %w", err)
+	}
+
+	return channel.Id, nil
+}
+
+// updateChannelNameAndKey updates the name and key of a channel by ID.
+func updateChannelNameAndKey(channelId int, templateName string, username string) {
+	ch, err := model.GetChannelById(channelId, true)
+	if err != nil {
+		return
+	}
+	ch.Name = fmt.Sprintf("%s-%s", templateName, username)
+	ch.Key = fmt.Sprintf("${token:%s}", username)
+	_ = ch.Update()
+}
+
+// deleteChannelById deletes a channel by ID.
+func deleteChannelById(channelId int) {
+	ch, err := model.GetChannelById(channelId, true)
+	if err != nil {
+		return
+	}
+	_ = ch.Delete()
+}
+
+// getChannelNameById returns the channel name for a given ID.
+func getChannelNameById(channelId int) string {
+	ch, err := model.GetChannelById(channelId, true)
+	if err != nil {
+		return ""
+	}
+	return ch.Name
+}
+
+// syncChannelsFromTemplate re-clones shared fields from the channel template to all
+// auto-created channels. Per-user fields (Key, Name, HeaderOverride) are preserved.
+// We iterate all TokenConfigs and update their linked channels with the template's fields.
+func syncChannelsFromTemplate(channelTemplateId int, username string) error {
+	tmpl, err := model.GetChannelById(channelTemplateId, true)
+	if err != nil {
+		return fmt.Errorf("load channel template %d: %w", channelTemplateId, err)
+	}
+
+	// Get all TokenConfigs that have a linked channel
+	configs, err := token_config.GetAllTokenConfigsFromDB()
+	if err != nil {
+		return fmt.Errorf("load token configs: %w", err)
+	}
+
+	for _, cfg := range configs {
+		if cfg.ChannelId <= 0 {
+			continue
+		}
+		ch, err := model.GetChannelById(cfg.ChannelId, true)
+		if err != nil {
+			continue
+		}
+		// Copy shared fields from template channel
+		ch.Type = tmpl.Type
+		ch.Models = tmpl.Models
+		ch.Group = tmpl.Group
+		ch.AutoBan = tmpl.AutoBan
+		ch.BaseURL = tmpl.BaseURL
+		ch.Priority = tmpl.Priority
+		ch.Weight = tmpl.Weight
+		ch.Tag = tmpl.Tag
+		ch.ModelMapping = tmpl.ModelMapping
+		ch.Other = tmpl.Other
+		ch.Setting = tmpl.Setting
+		ch.ParamOverride = tmpl.ParamOverride
+		ch.StatusCodeMapping = tmpl.StatusCodeMapping
+		ch.OtherSettings = tmpl.OtherSettings
+		ch.OpenAIOrganization = tmpl.OpenAIOrganization
+		ch.TestModel = tmpl.TestModel
+		// Per-user fields: preserve with user's own username
+		ch.Name = fmt.Sprintf("%s-%s", tmpl.Name, cfg.Username)
+		ch.Key = fmt.Sprintf("${token:%s}", cfg.Username)
+		if tmpl.HeaderOverride != nil && *tmpl.HeaderOverride != "" {
+			ho := strings.ReplaceAll(*tmpl.HeaderOverride, "${token:self}", fmt.Sprintf("${token:%s}", cfg.Username))
+			ch.HeaderOverride = &ho
+		} else {
+			ch.HeaderOverride = tmpl.HeaderOverride
+		}
+		_ = ch.Update()
+	}
+	return nil
+}
+
+// getDisabledChannels returns all manually disabled channels that can be used as channel templates.
+func getDisabledChannels() []token_config.DisabledChannelItem {
+	channels, err := model.GetAllChannels(0, 0, true, false)
+	if err != nil {
+		return nil
+	}
+	var result []token_config.DisabledChannelItem
+	for _, ch := range channels {
+		if ch.Status == common.ChannelStatusManuallyDisabled {
+			result = append(result, token_config.DisabledChannelItem{
+				Id:   ch.Id,
+				Name: ch.Name,
+				Type: ch.Type,
+			})
+		}
+	}
+	return result
+}
+

@@ -11,6 +11,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/custom"       // custom-hook: decoupled extensions
 	"github.com/QuantumNous/new-api/custom/codex" // custom-hook: codex extension
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/i18n"
@@ -1052,6 +1053,8 @@ func UpdateChannel(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	// custom-hook: sync auto-created channels when channel template is updated
+	custom.SyncChannelsFromChannelTemplate(channel.Id)
 	model.InitChannelCache()
 	service.ResetProxyClientCache()
 	// 记录变更的字段名（语言无关的字段标识），密钥仅记录"已更换"绝不记录内容。

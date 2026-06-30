@@ -21,18 +21,19 @@ import { z } from 'zod'
 export const tokenConfigSchema = z.object({
   id: z.number(),
   user_id: z.number(),
-  name: z.string(),
-  login_url: z.string(),
+  template_id: z.number(),
+  username: z.string(),
+  login_url: z.string().optional(),
   login_method: z.string().default('POST'),
-  login_headers: z.string().default('{}'),
-  login_body: z.string().default(''),
-  username: z.string().default(''),
-  password: z.string().default(''),
-  token_json_path: z.string().default(''),
+  login_headers: z.string().optional(),
+  login_body: z.string().optional(),
+  password: z.string().optional(),
+  token_json_path: z.string().optional(),
   refresh_interval: z.number().default(3600),
   current_token: z.string().default(''),
   token_expires_at: z.number().default(0),
   enabled: z.number().default(1),
+  channel_id: z.number().default(0),
   created_time: z.number(),
   updated_time: z.number(),
 })
@@ -48,12 +49,21 @@ export const tokenTemplateSchema = z.object({
   login_body: z.string().default(''),
   token_json_path: z.string().default(''),
   refresh_interval: z.number().default(3600),
+  // Channel template: reference to a disabled Channel that serves as blueprint
+  channel_template_id: z.number().default(0),
+  // Which template's token to use (0 = self)
+  token_template_id: z.number().default(0),
   created_time: z.number(),
   updated_time: z.number(),
 })
 
 export type TokenTemplate = z.infer<typeof tokenTemplateSchema>
 
+export interface DisabledChannel {
+  id: number
+  name: string
+  type: number
+}
 
 export interface ApiResponse<T = unknown> {
   success: boolean
@@ -62,14 +72,13 @@ export interface ApiResponse<T = unknown> {
 }
 
 export interface TokenConfigFormData {
-  name: string
   template_id?: number
+  username: string
+  password?: string
   login_url?: string
   login_method?: string
   login_headers?: string
   login_body?: string
-  username?: string
-  password?: string
   token_json_path?: string
   refresh_interval?: number
   enabled?: number

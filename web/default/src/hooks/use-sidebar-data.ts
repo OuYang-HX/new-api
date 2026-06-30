@@ -136,6 +136,11 @@ export function useSidebarData(): SidebarData {
             icon: Key,
           },
           {
+            title: t('Channel Templates'),
+            url: '/channel-templates',
+            icon: Radio,
+          },
+          {
             title: t('Models'),
             url: '/models/metadata',
             icon: Box,
