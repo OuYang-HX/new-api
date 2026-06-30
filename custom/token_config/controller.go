@@ -54,18 +54,18 @@ func GetTokenConfigs(c *gin.Context) {
 	})
 }
 
-// CreateTokenConfig creates a new token config for the current user.
-// The user provides username/password. Login config is inherited from the first
-// template that has login_url configured. Channels are auto-created from all
-// templates that have channel_template_id set.
+// CreateTokenConfig creates token configs for the current user.
+// For each token template that has login_url configured (including those referenced
+// by channel templates via token_template_id), a TokenConfig is created.
+// The user only provides username/password.
 func CreateTokenConfig(c *gin.Context) {
-	var cfg TokenConfig
-	if err := c.ShouldBindJSON(&cfg); err != nil {
+	var input TokenConfig
+	if err := c.ShouldBindJSON(&input); err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	cfg.UserId = c.GetInt("id")
-	if cfg.Username == "" {
+	userId := c.GetInt("id")
+	if input.Username == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
 			"message": "username is required",
@@ -73,32 +73,47 @@ func CreateTokenConfig(c *gin.Context) {
 		return
 	}
 
-	// Check for duplicate username across all templates
-	existing, err := GetTokenConfigByUsername(cfg.Username)
-	if err == nil && existing != nil {
-		c.JSON(http.StatusConflict, gin.H{
-			"success": false,
-			"message": fmt.Sprintf("username %q already exists", cfg.Username),
-		})
+	// Collect unique token templates that need a TokenConfig:
+	// 1. All templates with login_url (standalone token templates)
+	// 2. All templates referenced by channel templates via token_template_id
+	allTemplates, err := GetAllTokenTemplates()
+	if err != nil {
+		common.ApiError(c, err)
 		return
 	}
 
-	// Inherit login config from the first template that has login_url
-	tmplId := cfg.TemplateId
-	if tmplId == 0 {
-		templates, err := GetAllTokenTemplates()
-		if err == nil {
-			for _, tmpl := range templates {
-				if tmpl.LoginURL != "" {
-					tmplId = tmpl.Id
-					break
-				}
+	neededTemplateIds := map[int]bool{}
+	for _, tmpl := range allTemplates {
+		if tmpl.LoginURL != "" {
+			neededTemplateIds[tmpl.Id] = true
+		}
+		// If this channel template references another token template, add that too
+		if tmpl.HasChannelTemplate() {
+			tokenTplId := tmpl.GetTokenTemplateId()
+			if tokenTplId > 0 && tokenTplId != tmpl.Id {
+				neededTemplateIds[tokenTplId] = true
 			}
 		}
 	}
-	if tmplId > 0 {
-		tmpl, err := GetTokenTemplateById(tmplId)
-		if err == nil {
+
+	var createdConfigs []TokenConfig
+	for tplId := range neededTemplateIds {
+		// Check duplicate
+		existing, _ := GetTokenConfigByUsernameAndTemplateId(input.Username, tplId)
+		if existing != nil {
+			continue
+		}
+
+		cfg := TokenConfig{
+			UserId:     userId,
+			Username:   input.Username,
+			Password:   input.Password,
+			Enabled:    input.Enabled,
+			TemplateId: tplId,
+		}
+
+		tmpl, err := GetTokenTemplateById(tplId)
+		if err == nil && tmpl.LoginURL != "" {
 			cfg.LoginURL = tmpl.LoginURL
 			cfg.LoginMethod = tmpl.LoginMethod
 			cfg.LoginHeaders = tmpl.LoginHeaders
@@ -106,37 +121,41 @@ func CreateTokenConfig(c *gin.Context) {
 			cfg.TokenJSONPath = tmpl.TokenJSONPath
 			cfg.RefreshInterval = tmpl.RefreshInterval
 		}
-	}
-	cfg.TemplateId = tmplId
 
-	if err := cfg.Insert(); err != nil {
-		common.ApiError(c, err)
+		if err := cfg.Insert(); err != nil {
+			common.SysError(fmt.Sprintf("failed to create token config for template %d: %v", tplId, err))
+			continue
+		}
+		createdConfigs = append(createdConfigs, cfg)
+	}
+
+	if len(createdConfigs) == 0 {
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"message": "No new token configs created (may already exist)",
+		})
 		return
 	}
 
 	// Auto-create channels from all templates that have channel_template_id set
-	allTemplates, err := GetAllTokenTemplates()
-	if err == nil {
-		for _, tmpl := range allTemplates {
-			if tmpl.HasChannelTemplate() {
-				channelId, err := autoCreateChannelFromTemplate(cfg, tmpl)
-				if err != nil {
-					common.SysError(fmt.Sprintf("failed to auto-create channel from template %d for user %s: %v", tmpl.Id, cfg.Username, err))
-				} else {
-					if cfg.ChannelId == 0 {
-						cfg.ChannelId = channelId
-					}
+	for _, tmpl := range allTemplates {
+		if tmpl.HasChannelTemplate() {
+			channelId, err := autoCreateChannelFromTemplate(createdConfigs[0], tmpl)
+			if err != nil {
+				common.SysError(fmt.Sprintf("failed to auto-create channel from template %d for user %s: %v", tmpl.Id, input.Username, err))
+			} else {
+				// Update first config's channel_id for display
+				if createdConfigs[0].ChannelId == 0 {
+					createdConfigs[0].ChannelId = channelId
+					_ = db.Model(&createdConfigs[0]).Update("channel_id", channelId).Error
 				}
 			}
 		}
 	}
-	if cfg.ChannelId > 0 {
-		_ = db.Model(&cfg).Update("channel_id", cfg.ChannelId).Error
-	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"data":    cfg,
+		"data":    createdConfigs,
 	})
 }
 
