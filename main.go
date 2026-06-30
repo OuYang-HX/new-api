@@ -381,7 +381,7 @@ func cloneChannelFromTemplate(channelTemplateId int, username string) (int, erro
 
 	channel := *tmpl // shallow copy all fields
 	channel.Id = 0    // let GORM auto-generate
-	channel.Key = fmt.Sprintf("${token:%s}", username)
+	channel.Key = fmt.Sprintf("${token:%s:%s}", tmpl.Name, username)
 	channel.Name = fmt.Sprintf("%s-%s", tmpl.Name, username)
 	channel.Status = common.ChannelStatusEnabled
 	channel.UsedQuota = 0
@@ -394,7 +394,7 @@ func cloneChannelFromTemplate(channelTemplateId int, username string) (int, erro
 
 	// Replace ${token:self} in header_override with the actual username reference
 	if channel.HeaderOverride != nil && *channel.HeaderOverride != "" {
-		ho := strings.ReplaceAll(*channel.HeaderOverride, "${token:self}", fmt.Sprintf("${token:%s}", username))
+		ho := strings.ReplaceAll(*channel.HeaderOverride, "${token:self}", fmt.Sprintf("${token:%s:%s}", tmpl.Name, username))
 		channel.HeaderOverride = &ho
 	}
 
@@ -412,7 +412,7 @@ func updateChannelNameAndKey(channelId int, templateName string, username string
 		return
 	}
 	ch.Name = fmt.Sprintf("%s-%s", templateName, username)
-	ch.Key = fmt.Sprintf("${token:%s}", username)
+	ch.Key = fmt.Sprintf("${token:%s:%s}", templateName, username)
 	_ = ch.Update()
 }
 
@@ -476,9 +476,9 @@ func syncChannelsFromTemplate(channelTemplateId int, username string) error {
 		ch.TestModel = tmpl.TestModel
 		// Per-user fields: preserve with user's own username
 		ch.Name = fmt.Sprintf("%s-%s", tmpl.Name, cfg.Username)
-		ch.Key = fmt.Sprintf("${token:%s}", cfg.Username)
+		ch.Key = fmt.Sprintf("${token:%s:%s}", tmpl.Name, cfg.Username)
 		if tmpl.HeaderOverride != nil && *tmpl.HeaderOverride != "" {
-			ho := strings.ReplaceAll(*tmpl.HeaderOverride, "${token:self}", fmt.Sprintf("${token:%s}", cfg.Username))
+			ho := strings.ReplaceAll(*tmpl.HeaderOverride, "${token:self}", fmt.Sprintf("${token:%s:%s}", tmpl.Name, cfg.Username))
 			ch.HeaderOverride = &ho
 		} else {
 			ch.HeaderOverride = tmpl.HeaderOverride
