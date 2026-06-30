@@ -103,6 +103,25 @@ func DeleteTokenTemplate(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "template not found"})
 		return
 	}
+
+	// Delete all auto-created channels linked to this template
+	if t.HasChannelTemplate() && ChannelOps.Delete != nil {
+		configs, err := GetAllTokenConfigsFromDB()
+		if err == nil {
+			for _, cfg := range configs {
+				if cfg.ChannelId > 0 {
+					// Check if this channel belongs to this template by matching template name pattern
+					// Channel name format: "<template_name>-<username>"
+					expectedPrefix := t.Name + "-"
+					if name := ChannelOps.GetById(cfg.ChannelId); name != "" && len(name) > len(expectedPrefix) && name[:len(expectedPrefix)] == expectedPrefix {
+						ChannelOps.Delete(cfg.ChannelId)
+						_ = db.Model(cfg).Update("channel_id", 0).Error
+					}
+				}
+			}
+		}
+	}
+
 	if err := t.Delete(); err != nil {
 		common.ApiError(c, err)
 		return
