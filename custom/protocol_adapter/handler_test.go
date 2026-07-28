@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/relaykit/dto"
 )
 
 func TestResponsesRequestToChatCompletionsRequest_StringInput(t *testing.T) {

@@ -1,4 +1,4 @@
-package service
+package codex
 
 import (
 	"context"
@@ -9,6 +9,8 @@ import (
 
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 )
 
 func FetchCodexChannelModels(channel *model.Channel) ([]string, error) {
@@ -19,7 +21,7 @@ func FetchCodexChannelModels(channel *model.Channel) ([]string, error) {
 		return nil, fmt.Errorf("codex channel does not support multi-key model discovery")
 	}
 
-	client, err := NewProxyHttpClient(channel.GetSetting().Proxy)
+	client, err := service.NewProxyHttpClient(channel.GetSetting().Proxy)
 	if err != nil {
 		return nil, err
 	}
@@ -45,7 +47,7 @@ func fetchCodexChannelModels(
 	client *http.Client,
 	clientVersion string,
 ) ([]string, error) {
-	oauthKey, err := parseCodexOAuthKey(strings.TrimSpace(channel.Key))
+	oauthKey, err := ParseOAuthKey(strings.TrimSpace(channel.Key))
 	if err != nil {
 		return nil, err
 	}
@@ -66,7 +68,7 @@ func fetchCodexChannelModels(
 		if refreshErr != nil {
 			return nil, fmt.Errorf("failed to refresh Codex channel credential: %w", refreshErr)
 		}
-		statusCode, models, err = FetchCodexModels(ctx, client, baseURL, &CodexOAuthKey{
+		statusCode, models, err = FetchCodexModels(ctx, client, baseURL, &OAuthKey{
 			AccessToken: refreshedKey.AccessToken,
 			AccountID:   refreshedKey.AccountID,
 		}, clientVersion)

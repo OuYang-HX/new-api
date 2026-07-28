@@ -11,7 +11,7 @@ import (
 
 	"github.com/QuantumNous/new-api/custom/protocol_adapter"
 	"github.com/QuantumNous/new-api/custom/token_config"
-	"github.com/QuantumNous/new-api/types"
+	"github.com/QuantumNous/new-api/relaykit/types"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"

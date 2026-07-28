@@ -49,6 +49,11 @@ function SectionPageLayoutBreadcrumb(_props: SlotProps) {
 }
 SectionPageLayoutBreadcrumb.displayName = 'SectionPageLayout.Breadcrumb'
 
+function SectionPageLayoutDescription(_props: SlotProps) {
+  return null
+}
+SectionPageLayoutDescription.displayName = 'SectionPageLayout.Description'
+
 export type SectionPageLayoutProps = {
   children: ReactNode
   fixedContent?: boolean
@@ -63,6 +68,7 @@ export function SectionPageLayout(props: SectionPageLayoutProps) {
   let actions: ReactNode = null
   let content: ReactNode = null
   let breadcrumb: ReactNode = null
+  let description: ReactNode = null
 
   Children.forEach(props.children, (node) => {
     if (!isValidElement(node)) return
@@ -74,6 +80,8 @@ export function SectionPageLayout(props: SectionPageLayoutProps) {
       content = child.props.children
     else if (child.type === SectionPageLayoutBreadcrumb)
       breadcrumb = child.props.children
+    else if (child.type === SectionPageLayoutDescription)
+      description = child.props.children
   })
 
   return (
@@ -88,6 +96,9 @@ export function SectionPageLayout(props: SectionPageLayoutProps) {
               <h2 className='truncate text-base font-bold tracking-tight sm:text-lg'>
                 {title}
               </h2>
+              {description != null && (
+                <p className='text-muted-foreground text-sm'>{description}</p>
+              )}
             </div>
             {actions != null && (
               <div className='flex shrink-0 flex-wrap items-center justify-end gap-2 sm:gap-x-4'>
@@ -120,3 +131,4 @@ SectionPageLayout.Title = SectionPageLayoutTitle
 SectionPageLayout.Actions = SectionPageLayoutActions
 SectionPageLayout.Content = SectionPageLayoutContent
 SectionPageLayout.Breadcrumb = SectionPageLayoutBreadcrumb
+SectionPageLayout.Description = SectionPageLayoutDescription

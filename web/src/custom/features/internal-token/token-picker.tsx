@@ -169,11 +169,13 @@ export function TokenPicker({ onSelect }: TokenPickerProps) {
 
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
-      <PopoverTrigger asChild>
-        <Button type='button' variant='outline' size='sm'>
-          <KeyRound className='mr-1 h-3.5 w-3.5' />
-          {t('Insert Token')}
-        </Button>
+      <PopoverTrigger
+        render={
+          <Button type='button' variant='outline' size='sm' />
+        }
+      >
+        <KeyRound className='mr-1 h-3.5 w-3.5' />
+        {t('Insert Token')}
       </PopoverTrigger>
       <PopoverContent className='w-80 p-0' align='end'>
         {view === 'list' && (

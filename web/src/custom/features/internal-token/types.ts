@@ -21,6 +21,7 @@ import { z } from 'zod'
 export const tokenConfigSchema = z.object({
   id: z.number(),
   user_id: z.number(),
+  template_id: z.number().optional(),
   name: z.string(),
   login_url: z.string(),
   login_method: z.string().default('POST'),

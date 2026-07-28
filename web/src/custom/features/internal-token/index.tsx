@@ -94,8 +94,8 @@ export function InternalToken() {
   const revealAllowed = (configsData as any)?.meta?.reveal_allowed ?? false
 
   // Template lookup helper
-  function getTemplateName(templateId: number): string {
-    if (templateId === 0) return t('Custom')
+  function getTemplateName(templateId?: number): string {
+    if (!templateId || templateId === 0) return t('Custom')
     const tmpl = templates.find((t) => t.id === templateId)
     return tmpl ? tmpl.name : `#${templateId}`
   }
