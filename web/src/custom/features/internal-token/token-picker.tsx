@@ -50,7 +50,6 @@ import { useAuthStore } from '@/stores/auth-store'
 import { ROLE } from '@/lib/roles'
 
 const EMPTY_FORM: TokenConfigFormData = {
-  name: '',
   login_url: '',
   login_method: 'POST',
   login_headers: '{}',
@@ -132,7 +131,6 @@ export function TokenPicker({ onSelect }: TokenPickerProps) {
   function openEdit(token: TokenConfig) {
     setEditingId(token.id)
     setForm({
-      name: token.name,
       login_url: token.login_url,
       login_method: token.login_method,
       login_headers: token.login_headers,
@@ -171,19 +169,19 @@ export function TokenPicker({ onSelect }: TokenPickerProps) {
     <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger
         render={
-          <Button type='button' variant='outline' size='sm' />
+          <Button type='button' variant='outline' size='sm'>
+            <KeyRound className='mr-1 h-3.5 w-3.5' />
+            {t('Insert Token')}
+          </Button>
         }
-      >
-        <KeyRound className='mr-1 h-3.5 w-3.5' />
-        {t('Insert Token')}
-      </PopoverTrigger>
+      />
       <PopoverContent className='w-80 p-0' align='end'>
         {view === 'list' && (
           <>
             <div className='border-b px-3 py-2'>
               <p className='text-sm font-medium'>{t('Internal Tokens')}</p>
               <p className='text-muted-foreground text-xs'>
-                {t('Select a token to insert as ${token:name}')}
+                {t('Select a token to insert as ${token:username}')}
               </p>
             </div>
             <div className='max-h-60 overflow-y-auto p-1'>
@@ -203,7 +201,25 @@ export function TokenPicker({ onSelect }: TokenPickerProps) {
                   </Button>
                 </div>
               ) : (
-                tokens.map((token) => (
+                <>
+                  {/* Self-reference option for channel templates */}
+                  <div
+                    className='hover:bg-accent flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors cursor-pointer'
+                    onClick={() => {
+                      onSelect(`\${token:self}`)
+                      setOpen(false)
+                    }}
+                  >
+                    <KeyRound className='text-primary h-3.5 w-3.5 shrink-0' />
+                    <span className='truncate font-mono text-xs font-medium text-primary'>
+                      {t('Self (each user\'s own token)')}
+                    </span>
+                    <span className='ml-auto text-[10px] text-primary'>
+                      {'$' + '{token:self}'}
+                    </span>
+                  </div>
+                  <div className='border-t my-1' />
+                  {tokens.map((token) => (
                   <div
                     key={token.id}
                     className='hover:bg-muted flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors'
@@ -212,13 +228,13 @@ export function TokenPicker({ onSelect }: TokenPickerProps) {
                       type='button'
                       className='flex flex-1 items-center gap-2 text-left'
                       onClick={() => {
-                        onSelect(`\${token:${token.name}}`)
+                        onSelect(`\${token:${token.username}}`)
                         setOpen(false)
                       }}
                     >
                       <KeyRound className='text-muted-foreground h-3.5 w-3.5 shrink-0' />
                       <span className='truncate font-mono text-xs'>
-                        {token.name}
+                        {token.username}
                       </span>
                       {isAdmin && token.user_id !== auth.user?.id && (
                         <span className='text-muted-foreground ml-1 text-[10px]'>
@@ -242,7 +258,8 @@ export function TokenPicker({ onSelect }: TokenPickerProps) {
                       </button>
                     )}
                   </div>
-                ))
+                  ))}
+                </>
               )}
             </div>
             {tokens.length > 0 && (
@@ -272,16 +289,6 @@ export function TokenPicker({ onSelect }: TokenPickerProps) {
             </div>
 
             <div className='space-y-3'>
-              <div className='space-y-1'>
-                <Label className='text-xs'>{t('Name')}</Label>
-                <Input
-                  value={form.name}
-                  onChange={(e) => updateField('name', e.target.value)}
-                  required
-                  className='h-8 text-xs'
-                />
-              </div>
-
               <div className='space-y-1'>
                 <Label className='text-xs'>{t('Login URL')}</Label>
                 <Input

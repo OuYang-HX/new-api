@@ -14,7 +14,7 @@ import (
 type TokenTemplate struct {
 	Id              int            `json:"id" gorm:"primaryKey;autoIncrement"`
 	Name            string         `json:"name" gorm:"size:128;not null;uniqueIndex:uk_token_template_name_del,priority:1"`
-	LoginURL        string         `json:"login_url" gorm:"type:text;not null"`
+	LoginURL        string         `json:"login_url" gorm:"type:text"`
 	LoginMethod     string         `json:"login_method" gorm:"size:16;default:'POST'"`
 	LoginHeaders    string         `json:"login_headers" gorm:"type:text"`
 	LoginBody       string         `json:"login_body" gorm:"type:text"`

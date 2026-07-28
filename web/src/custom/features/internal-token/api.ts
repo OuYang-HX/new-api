@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
-import type { TokenConfig, TokenTemplate, TokenConfigFormData, ApiResponse } from './types'
+import type { TokenConfig, TokenTemplate, ChannelTemplate, TokenConfigFormData, DisabledChannel, ApiResponse } from './types'
 
 export interface TokenConfigListResponse {
   success: boolean
@@ -93,5 +93,47 @@ export async function deleteTokenTemplate(
   id: number
 ): Promise<ApiResponse> {
   const res = await api.delete(`/api/user/token-config/templates/${id}`)
+  return res.data
+}
+
+// Channel templates (readable by all users, admin-only write)
+export async function getChannelTemplates(): Promise<ApiResponse<ChannelTemplate[]>> {
+  const res = await api.get('/api/user/token-config/channel-templates')
+  return res.data
+}
+
+export async function createChannelTemplate(
+  data: Partial<ChannelTemplate>
+): Promise<ApiResponse<ChannelTemplate>> {
+  const res = await api.post('/api/user/token-config/channel-templates', data)
+  return res.data
+}
+
+export async function updateChannelTemplate(
+  id: number,
+  data: Partial<ChannelTemplate>
+): Promise<ApiResponse<ChannelTemplate>> {
+  const res = await api.put(`/api/user/token-config/channel-templates/${id}`, data)
+  return res.data
+}
+
+export async function deleteChannelTemplate(
+  id: number
+): Promise<ApiResponse> {
+  const res = await api.delete(`/api/user/token-config/channel-templates/${id}`)
+  return res.data
+}
+
+// Rebuild channels for a channel template — creates channels for all TokenConfigs
+export async function rebuildChannelsForChannelTemplate(
+  templateId: number
+): Promise<ApiResponse<{ created: number; updated: number }>> {
+  const res = await api.post(`/api/user/token-config/channel-templates/${templateId}/rebuild-channels`)
+  return res.data
+}
+
+// Disabled channels — used as channel template blueprints
+export async function getDisabledChannels(): Promise<ApiResponse<DisabledChannel[]>> {
+  const res = await api.get('/api/user/token-config/disabled-channels')
   return res.data
 }
