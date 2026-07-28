@@ -3,6 +3,7 @@
     "360": "360",
     "1000": "1000",
     "10000": "10000",
+    "Internal Token": "Internal Token",
     "_copy": "_複製",
     "，": "，",
     ", and": "，和",
@@ -5317,5 +5318,11 @@
     "Zhipu": "智譜",
     "Zhipu V4": "智譜 V4",
     "Zoom": "縮放"
-  }
+  },
+  "Insert Token": "Insert Token",
+  "Internal token value": "Internal token value",
+  "Select a token to insert as ${token:name}": "Select a token to insert as ${token:name}",
+  "No tokens configured": "No tokens configured",
+  "Create Token": "Create Token",
+  "Edit Token": "Edit Token"
 }

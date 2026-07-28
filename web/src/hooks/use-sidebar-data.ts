@@ -36,9 +36,8 @@ import {
 } from 'lucide-react'
 import { useCustomSidebarItems } from '@/custom/sidebar' // custom-hook: decoupled extensions
 import { useTranslation } from 'react-i18next'
-
-import { type SidebarData } from '@/components/layout/types'
 import { ROLE } from '@/lib/roles'
+import { type SidebarData } from '@/components/layout/types'
 
 /**
  * Root navigation groups for the application sidebar.
@@ -135,6 +134,11 @@ export function useSidebarData(): SidebarData {
             title: t('Token Templates'),
             url: '/token-templates',
             icon: Key,
+          },
+          {
+            title: t('Channel Templates'),
+            url: '/channel-templates',
+            icon: Radio,
           },
           {
             title: t('Models'),
