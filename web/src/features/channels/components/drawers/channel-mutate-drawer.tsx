@@ -48,6 +48,10 @@ import { type SubmitErrorHandler, useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { getLobeIcon } from '@/lib/lobe-icon'
+import {
+  parseChannelConnectionInfo,
+  type ChannelConnectionInfo,
+} from '@/lib/channel-connection-info'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { useHiddenClickUnlock } from '@/hooks/use-hidden-click-unlock'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -321,8 +325,6 @@ export function ChannelMutateDrawer({
   const [paramOverrideEditorOpen, setParamOverrideEditorOpen] = useState(false)
   const [advancedCustomEditorOpen, setAdvancedCustomEditorOpen] =
     useState(false)
-  const [clipboardConnectionInfo, setClipboardConnectionInfo] =
-    useState<ChannelConnectionInfo | null>(null)
 
   const isEditing = Boolean(currentRow)
   const channelId = currentRow?.id ?? null
@@ -429,34 +431,13 @@ export function ChannelMutateDrawer({
         shouldDirty: true,
         shouldValidate: true,
       })
-      setClipboardConnectionInfo(null)
       toast.success(t('Connection info filled in'))
     },
     [form, t]
   )
 
-  const pasteConnectionInfoFromClipboard = useCallback(async () => {
-    if (typeof navigator === 'undefined' || !navigator.clipboard?.readText) {
-      toast.error(t('Unable to read clipboard'))
-      return
-    }
-
-    try {
-      const text = await navigator.clipboard.readText()
-      const parsed = parseChannelConnectionInfo(text)
-      if (parsed) {
-        applyConnectionInfo(parsed)
-        return
-      }
-      toast.info(t('No connection info found in clipboard'))
-    } catch {
-      toast.error(t('Unable to read clipboard'))
-    }
-  }, [applyConnectionInfo, t])
-
   useEffect(() => {
     if (!open || isEditing) {
-      setClipboardConnectionInfo(null)
       return
     }
 
@@ -469,7 +450,10 @@ export function ChannelMutateDrawer({
       .readText()
       .then((text) => {
         if (cancelled) return
-        setClipboardConnectionInfo(parseChannelConnectionInfo(text))
+        const parsed = parseChannelConnectionInfo(text)
+        if (parsed) {
+          applyConnectionInfo(parsed)
+        }
       })
       .catch(() => {
         /* Clipboard detection is best-effort on drawer open. */
@@ -478,7 +462,7 @@ export function ChannelMutateDrawer({
     return () => {
       cancelled = true
     }
-  }, [isEditing, open])
+  }, [isEditing, open, applyConnectionInfo])
 
   // Helper computed values
   const isBatchMode =
@@ -498,19 +482,6 @@ export function ChannelMutateDrawer({
     () => getAdvancedCustomStats(currentAdvancedCustom),
     [currentAdvancedCustom]
   )
-  const advancedCustomRouteTypeLabels =
-    advancedCustomStats.routeTypeLabels.slice(
-      0,
-      ADVANCED_CUSTOM_ROUTE_TYPE_PREVIEW_LIMIT
-    )
-  const hiddenAdvancedCustomRouteTypeCount =
-    advancedCustomStats.routeTypeLabels.length -
-    advancedCustomRouteTypeLabels.length
-  const advancedCustomRouteTypeTitle =
-    hiddenAdvancedCustomRouteTypeCount > 0
-      ? advancedCustomStats.routeTypeLabels.join(', ')
-      : undefined
-
   // Get all models list
   const allModelsList = useMemo(
     () => allModelsData?.data?.map((model) => model.id).filter(Boolean) || [],
@@ -892,9 +863,12 @@ export function ChannelMutateDrawer({
     setFetchModelsDialogOpen(true)
   }, [isEditing, form, t])
 
+  const editingAdvancedCustom =
+    isEditing && currentType === CHANNEL_TYPE_ADVANCED_CUSTOM
+
   const createModeFetcher = useCallback(async (): Promise<string[]> => {
     const response = await fetchModels({
-      type,
+      type: form.getValues('type'),
       key: isEditing ? undefined : form.getValues('key'),
       channel_id: editingAdvancedCustom ? channelId || undefined : undefined,
       base_url: form.getValues('base_url') || '',
@@ -906,7 +880,7 @@ export function ChannelMutateDrawer({
       return response.data
     }
     throw new Error(response.message || 'No models fetched from upstream')
-  }, [form])
+  }, [form, isEditing, editingAdvancedCustom, channelId])
 
   // Handle model operations
   const handleFillRelatedModels = useCallback(() => {
@@ -1174,7 +1148,6 @@ export function ChannelMutateDrawer({
       if (!v) {
         form.reset(CHANNEL_FORM_DEFAULT_VALUES)
         setAdvancedSettingsOpen(false)
-        setClipboardConnectionInfo(null)
       }
     },
     [onOpenChange, form]
@@ -3647,13 +3620,13 @@ export function ChannelMutateDrawer({
         redirectModels={redirectModelList}
         redirectSourceModels={redirectModelKeyList}
         customFetcher={
-          shouldPreviewUnsavedModels ? formPreviewFetcher : undefined
+          editingAdvancedCustom ? createModeFetcher : undefined
         }
         channelName={
-          shouldPreviewUnsavedModels ? currentName?.trim() : undefined
+          editingAdvancedCustom ? currentName?.trim() : undefined
         }
         existingModelsOverride={
-          shouldPreviewUnsavedModels
+          editingAdvancedCustom
             ? parseModelsString(form.getValues('models') || '')
             : undefined
         }

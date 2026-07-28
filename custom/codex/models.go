@@ -1,4 +1,4 @@
-package service
+package codex
 
 import (
 	"context"
@@ -96,7 +96,7 @@ func FetchCodexModels(
 	ctx context.Context,
 	client *http.Client,
 	baseURL string,
-	oauthKey *CodexOAuthKey,
+	oauthKey *OAuthKey,
 	clientVersion string,
 ) (statusCode int, models []string, err error) {
 	if client == nil {

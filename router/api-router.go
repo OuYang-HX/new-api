@@ -15,7 +15,6 @@ import (
 
 func SetApiRouter(router *gin.Engine) {
 	// custom-hook: inject route handlers to avoid import cycles
-	custom.RouteHandlers = custom.RouteHandlers // already zero-initialized
 	custom.RouteHandlers.RefreshCodexChannelCredential = controller.RefreshCodexChannelCredential
 	custom.RouteHandlers.StartCodexOAuth = codex.StartCodexOAuth
 	custom.RouteHandlers.CompleteCodexOAuth = codex.CompleteCodexOAuth
