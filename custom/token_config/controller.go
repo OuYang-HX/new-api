@@ -237,7 +237,7 @@ func UpdateTokenConfig(c *gin.Context) {
 	// If username changed, update the auto-created channel name and key
 	if oldUsername != cfg.Username && cfg.ChannelId > 0 {
 		if ChannelOps.UpdateNameAndKey != nil {
-			ChannelOps.UpdateNameAndKey(cfg.ChannelId, getTemplateName(cfg.TemplateId), cfg.Username)
+			ChannelOps.UpdateNameAndKey(cfg.ChannelId, oldUsername, getTemplateName(cfg.TemplateId), cfg.Username)
 		}
 		// Migrate cache key
 		DeleteTokenFromCache(oldUsername)

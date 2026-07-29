@@ -21,7 +21,7 @@ type DisabledChannelItem struct {
 // token_config and model packages.
 var ChannelOps = struct {
 	CloneFromTemplate    func(channelTemplateId int, tokenTemplateName string, username string) (int, error)
-	UpdateNameAndKey     func(channelId int, templateName string, username string)
+	UpdateNameAndKey     func(channelId int, oldUsername string, tokenTemplateName string, username string)
 	Delete               func(channelId int)
 	GetById              func(channelId int) string
 	SyncFromTemplate     func(channelTemplateId int, username string) error
