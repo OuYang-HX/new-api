@@ -422,8 +422,10 @@ func cloneChannelFromTemplate(channelTemplateId int, tokenTemplateName string, u
 
 	channel := *tmpl // shallow copy all fields
 	channel.Id = 0    // let GORM auto-generate
+	// Key references the token template so it matches the token cache key;
+	// Name uses the channel template (blueprint) name for display.
 	channel.Key = fmt.Sprintf("${token:%s:%s}", tokenTemplateName, username)
-	channel.Name = fmt.Sprintf("%s-%s", tokenTemplateName, username)
+	channel.Name = fmt.Sprintf("%s-%s", tmpl.Name, username)
 	channel.Status = common.ChannelStatusEnabled
 	channel.UsedQuota = 0
 	channel.Balance = 0
@@ -447,7 +449,7 @@ func cloneChannelFromTemplate(channelTemplateId int, tokenTemplateName string, u
 }
 
 // getTokenTemplateNameById returns the name of the token template for the given ID.
-// Used when building channel key/name references so they match the token cache key.
+// Used when building the channel key reference so it matches the token cache key.
 func getTokenTemplateNameById(tokenTemplateId int) string {
 	tmpl, err := token_config.GetTokenTemplateById(tokenTemplateId)
 	if err != nil {
@@ -456,14 +458,19 @@ func getTokenTemplateNameById(tokenTemplateId int) string {
 	return tmpl.Name
 }
 
-// updateChannelNameAndKey updates the name and key of a channel by ID.
-func updateChannelNameAndKey(channelId int, templateName string, username string) {
+// updateChannelNameAndKey updates the name and key of a channel by ID when the
+// user's username changes. The channel template name is derived from the current
+// channel name; the key uses the token template name so it matches the token cache.
+func updateChannelNameAndKey(channelId int, oldUsername string, tokenTemplateName string, username string) {
 	ch, err := model.GetChannelById(channelId, true)
 	if err != nil {
 		return
 	}
-	ch.Name = fmt.Sprintf("%s-%s", templateName, username)
-	ch.Key = fmt.Sprintf("${token:%s:%s}", templateName, username)
+	// Channel name format is "<channelTemplateName>-<username>". Derive the template
+	// name from the current name by stripping the old username suffix.
+	channelTemplateName := strings.TrimSuffix(ch.Name, "-"+oldUsername)
+	ch.Name = fmt.Sprintf("%s-%s", channelTemplateName, username)
+	ch.Key = fmt.Sprintf("${token:%s:%s}", tokenTemplateName, username)
 	_ = ch.Update()
 }
 
@@ -526,10 +533,11 @@ func syncChannelsFromTemplate(channelTemplateId int, username string) error {
 		ch.OpenAIOrganization = tmpl.OpenAIOrganization
 		ch.TestModel = tmpl.TestModel
 
-		// Per-user fields: use the token template name (not the channel template name)
-		// so the resolved ${token:...} reference matches the token cache key.
+		// Per-user fields:
+		// - Name uses the channel template (blueprint) name for display.
+		// - Key uses the token template name so ${token:...} matches the token cache key.
 		tokenTemplateName := getTokenTemplateNameById(cfg.TemplateId)
-		ch.Name = fmt.Sprintf("%s-%s", tokenTemplateName, cfg.Username)
+		ch.Name = fmt.Sprintf("%s-%s", tmpl.Name, cfg.Username)
 		ch.Key = fmt.Sprintf("${token:%s:%s}", tokenTemplateName, cfg.Username)
 		if tmpl.HeaderOverride != nil && *tmpl.HeaderOverride != "" {
 			ho := strings.ReplaceAll(*tmpl.HeaderOverride, "${token:self}", fmt.Sprintf("${token:%s:%s}", tokenTemplateName, cfg.Username))
@@ -544,9 +552,11 @@ func syncChannelsFromTemplate(channelTemplateId int, username string) error {
 
 // fixChannelTemplateTokenRefs corrects token references in auto-created channels
 // that were generated before the token-template-name fix. It is idempotent:
-// only channels whose key/name still use the old channel-template name are updated
-// to use the token-template name, so they match the token cache key built by
-// ResolveTokenVariables.
+// - Keys using the old channel-template name as token prefix are updated to use
+//   the token-template name, so they match the token cache key built by
+//   ResolveTokenVariables.
+// - Channel names are preserved/reset to the channel template (blueprint) name,
+//   never the token template name.
 func fixChannelTemplateTokenRefs() {
 	channelTemplates, err := token_config.GetAllChannelTemplates()
 	if err != nil {
@@ -573,16 +583,21 @@ func fixChannelTemplateTokenRefs() {
 		newNamePrefix := tokenTpl.Name + "-"
 
 		var channels []model.Channel
-		if err := model.DB.Where("name LIKE ? AND key LIKE ?", oldNamePrefix+"%", oldTokenPrefix+"%").Find(&channels).Error; err != nil {
+		// Match channels created from this template by either old (bug) or new (correct) token prefix.
+		if err := model.DB.Where("key LIKE ? OR key LIKE ?", oldTokenPrefix+"%", newTokenPrefix+"%").Find(&channels).Error; err != nil {
 			common.SysError(fmt.Sprintf("fixChannelTemplateTokenRefs: load channels for template %d: %v", ct.Id, err))
 			continue
 		}
 		for _, ch := range channels {
 			ch.Key = strings.Replace(ch.Key, oldTokenPrefix, newTokenPrefix, 1)
-			ch.Name = strings.Replace(ch.Name, oldNamePrefix, newNamePrefix, 1)
 			if ch.HeaderOverride != nil && *ch.HeaderOverride != "" {
 				ho := strings.ReplaceAll(*ch.HeaderOverride, oldTokenPrefix, newTokenPrefix)
 				ch.HeaderOverride = &ho
+			}
+			// If a previous incorrect migration used the token template name as the
+			// channel name prefix, reset it to the channel template (blueprint) name.
+			if strings.HasPrefix(ch.Name, newNamePrefix) {
+				ch.Name = oldNamePrefix + strings.TrimPrefix(ch.Name, newNamePrefix)
 			}
 			if err := ch.Update(); err != nil {
 				common.SysError(fmt.Sprintf("fixChannelTemplateTokenRefs: update channel %d: %v", ch.Id, err))
