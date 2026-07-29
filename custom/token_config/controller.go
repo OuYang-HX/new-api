@@ -174,7 +174,14 @@ func autoCreateChannelFromChannelTemplate(cfg TokenConfig, ct *ChannelTemplate) 
 	if ChannelOps.CloneFromTemplate == nil {
 		return 0, fmt.Errorf("channel operations not initialized")
 	}
-	return ChannelOps.CloneFromTemplate(ct.ChannelTemplateId, cfg.Username)
+	if ct.TokenTemplateId <= 0 {
+		return 0, fmt.Errorf("channel template %d has no token template reference", ct.Id)
+	}
+	tokenTpl, err := GetTokenTemplateById(ct.TokenTemplateId)
+	if err != nil {
+		return 0, fmt.Errorf("load token template %d for channel template %d: %w", ct.TokenTemplateId, ct.Id, err)
+	}
+	return ChannelOps.CloneFromTemplate(ct.ChannelTemplateId, tokenTpl.Name, cfg.Username)
 }
 
 // UpdateTokenConfig updates an existing token config.
