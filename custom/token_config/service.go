@@ -183,13 +183,20 @@ func fetchToken(cfg *TokenConfig) (token string, expiresAt int64, err error) {
 		}
 	}
 	// Build request body with variable substitution
-	body := cfg.LoginBody
+	body := effective.LoginBody
 	body = strings.ReplaceAll(body, "{username}", cfg.Username)
 	body = strings.ReplaceAll(body, "{password}", cfg.Password)
 
-	method := cfg.LoginMethod
+	method := effective.LoginMethod
 	if method == "" {
 		method = http.MethodPost
+	}
+
+	if effective.LoginURL == "" {
+		if cfg.TemplateId <= 0 {
+			return "", 0, fmt.Errorf("no login_url configured for token config")
+		}
+		return "", 0, fmt.Errorf("no login_url configured for token config (template %d)", cfg.TemplateId)
 	}
 
 	var bodyReader io.Reader
@@ -197,14 +204,14 @@ func fetchToken(cfg *TokenConfig) (token string, expiresAt int64, err error) {
 		bodyReader = bytes.NewBufferString(body)
 	}
 
-	req, err := http.NewRequest(method, cfg.LoginURL, bodyReader)
+	req, err := http.NewRequest(method, effective.LoginURL, bodyReader)
 	if err != nil {
 		return "", 0, fmt.Errorf("build request: %w", err)
 	}
 
 	// Parse and set headers
-	if cfg.LoginHeaders != "" {
-		headers, parseErr := parseLoginHeaders(cfg.LoginHeaders)
+	if effective.LoginHeaders != "" {
+		headers, parseErr := parseLoginHeaders(effective.LoginHeaders)
 		if parseErr != nil {
 			return "", 0, fmt.Errorf("parse headers: %w", parseErr)
 		}
