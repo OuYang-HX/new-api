@@ -62,7 +62,7 @@ var MigrationModels struct {
 // These are set by the caller (main.go) before calling RegisterMigrations
 // to avoid import cycles between custom and model packages.
 var ChannelOperationFuncs struct {
-	CloneFromTemplate    func(channelTemplateId int, username string) (int, error)
+	CloneFromTemplate    func(channelTemplateId int, tokenTemplateName string, username string) (int, error)
 	UpdateNameAndKey     func(channelId int, templateName string, username string)
 	Delete               func(channelId int)
 	GetById              func(channelId int) string

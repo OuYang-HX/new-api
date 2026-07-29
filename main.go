@@ -353,6 +353,9 @@ func InitResources() error {
 
 	model.CheckSetup()
 
+	// custom-hook: one-time data migration for channel template token references
+	fixChannelTemplateTokenRefs()
+
 	// Initialize options, should after model.InitDB()
 	if common.IsMasterNode {
 		if err := model.MigrateRetiredFrontendOptions(); err != nil {
@@ -411,7 +414,7 @@ func InitResources() error {
 //   - Status set to enabled (1)
 //   - HeaderOverride: ${token:self} replaced with ${token:<username>}
 // This function lives in main to avoid import cycles (custom -> model -> custom).
-func cloneChannelFromTemplate(channelTemplateId int, username string) (int, error) {
+func cloneChannelFromTemplate(channelTemplateId int, tokenTemplateName string, username string) (int, error) {
 	tmpl, err := model.GetChannelById(channelTemplateId, true)
 	if err != nil {
 		return 0, fmt.Errorf("load channel template %d: %w", channelTemplateId, err)
@@ -419,8 +422,8 @@ func cloneChannelFromTemplate(channelTemplateId int, username string) (int, erro
 
 	channel := *tmpl // shallow copy all fields
 	channel.Id = 0    // let GORM auto-generate
-	channel.Key = fmt.Sprintf("${token:%s:%s}", tmpl.Name, username)
-	channel.Name = fmt.Sprintf("%s-%s", tmpl.Name, username)
+	channel.Key = fmt.Sprintf("${token:%s:%s}", tokenTemplateName, username)
+	channel.Name = fmt.Sprintf("%s-%s", tokenTemplateName, username)
 	channel.Status = common.ChannelStatusEnabled
 	channel.UsedQuota = 0
 	channel.Balance = 0
@@ -432,7 +435,7 @@ func cloneChannelFromTemplate(channelTemplateId int, username string) (int, erro
 
 	// Replace ${token:self} in header_override with the actual username reference
 	if channel.HeaderOverride != nil && *channel.HeaderOverride != "" {
-		ho := strings.ReplaceAll(*channel.HeaderOverride, "${token:self}", fmt.Sprintf("${token:%s:%s}", tmpl.Name, username))
+		ho := strings.ReplaceAll(*channel.HeaderOverride, "${token:self}", fmt.Sprintf("${token:%s:%s}", tokenTemplateName, username))
 		channel.HeaderOverride = &ho
 	}
 
@@ -441,6 +444,16 @@ func cloneChannelFromTemplate(channelTemplateId int, username string) (int, erro
 	}
 
 	return channel.Id, nil
+}
+
+// getTokenTemplateNameById returns the name of the token template for the given ID.
+// Used when building channel key/name references so they match the token cache key.
+func getTokenTemplateNameById(tokenTemplateId int) string {
+	tmpl, err := token_config.GetTokenTemplateById(tokenTemplateId)
+	if err != nil {
+		return fmt.Sprintf("template-%d", tokenTemplateId)
+	}
+	return tmpl.Name
 }
 
 // updateChannelNameAndKey updates the name and key of a channel by ID.
@@ -512,11 +525,14 @@ func syncChannelsFromTemplate(channelTemplateId int, username string) error {
 		ch.OtherSettings = tmpl.OtherSettings
 		ch.OpenAIOrganization = tmpl.OpenAIOrganization
 		ch.TestModel = tmpl.TestModel
-		// Per-user fields: preserve with user's own username
-		ch.Name = fmt.Sprintf("%s-%s", tmpl.Name, cfg.Username)
-		ch.Key = fmt.Sprintf("${token:%s:%s}", tmpl.Name, cfg.Username)
+
+		// Per-user fields: use the token template name (not the channel template name)
+		// so the resolved ${token:...} reference matches the token cache key.
+		tokenTemplateName := getTokenTemplateNameById(cfg.TemplateId)
+		ch.Name = fmt.Sprintf("%s-%s", tokenTemplateName, cfg.Username)
+		ch.Key = fmt.Sprintf("${token:%s:%s}", tokenTemplateName, cfg.Username)
 		if tmpl.HeaderOverride != nil && *tmpl.HeaderOverride != "" {
-			ho := strings.ReplaceAll(*tmpl.HeaderOverride, "${token:self}", fmt.Sprintf("${token:%s:%s}", tmpl.Name, cfg.Username))
+			ho := strings.ReplaceAll(*tmpl.HeaderOverride, "${token:self}", fmt.Sprintf("${token:%s:%s}", tokenTemplateName, cfg.Username))
 			ch.HeaderOverride = &ho
 		} else {
 			ch.HeaderOverride = tmpl.HeaderOverride
@@ -524,6 +540,55 @@ func syncChannelsFromTemplate(channelTemplateId int, username string) error {
 		_ = ch.Update()
 	}
 	return nil
+}
+
+// fixChannelTemplateTokenRefs corrects token references in auto-created channels
+// that were generated before the token-template-name fix. It is idempotent:
+// only channels whose key/name still use the old channel-template name are updated
+// to use the token-template name, so they match the token cache key built by
+// ResolveTokenVariables.
+func fixChannelTemplateTokenRefs() {
+	channelTemplates, err := token_config.GetAllChannelTemplates()
+	if err != nil {
+		common.SysError(fmt.Sprintf("fixChannelTemplateTokenRefs: load channel templates: %v", err))
+		return
+	}
+	for _, ct := range channelTemplates {
+		if ct.ChannelTemplateId <= 0 || ct.TokenTemplateId <= 0 {
+			continue
+		}
+		blueprint, err := model.GetChannelById(ct.ChannelTemplateId, true)
+		if err != nil {
+			common.SysError(fmt.Sprintf("fixChannelTemplateTokenRefs: load blueprint channel %d: %v", ct.ChannelTemplateId, err))
+			continue
+		}
+		tokenTpl, err := token_config.GetTokenTemplateById(ct.TokenTemplateId)
+		if err != nil {
+			common.SysError(fmt.Sprintf("fixChannelTemplateTokenRefs: load token template %d: %v", ct.TokenTemplateId, err))
+			continue
+		}
+		oldTokenPrefix := "${token:" + blueprint.Name + ":"
+		newTokenPrefix := "${token:" + tokenTpl.Name + ":"
+		oldNamePrefix := blueprint.Name + "-"
+		newNamePrefix := tokenTpl.Name + "-"
+
+		var channels []model.Channel
+		if err := model.DB.Where("name LIKE ? AND key LIKE ?", oldNamePrefix+"%", oldTokenPrefix+"%").Find(&channels).Error; err != nil {
+			common.SysError(fmt.Sprintf("fixChannelTemplateTokenRefs: load channels for template %d: %v", ct.Id, err))
+			continue
+		}
+		for _, ch := range channels {
+			ch.Key = strings.Replace(ch.Key, oldTokenPrefix, newTokenPrefix, 1)
+			ch.Name = strings.Replace(ch.Name, oldNamePrefix, newNamePrefix, 1)
+			if ch.HeaderOverride != nil && *ch.HeaderOverride != "" {
+				ho := strings.ReplaceAll(*ch.HeaderOverride, oldTokenPrefix, newTokenPrefix)
+				ch.HeaderOverride = &ho
+			}
+			if err := ch.Update(); err != nil {
+				common.SysError(fmt.Sprintf("fixChannelTemplateTokenRefs: update channel %d: %v", ch.Id, err))
+			}
+		}
+	}
 }
 
 // getDisabledChannels returns all manually disabled channels that can be used as channel templates.

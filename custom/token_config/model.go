@@ -20,7 +20,7 @@ type DisabledChannelItem struct {
 // These are injected by the registry package to avoid import cycles between
 // token_config and model packages.
 var ChannelOps = struct {
-	CloneFromTemplate    func(channelTemplateId int, username string) (int, error)
+	CloneFromTemplate    func(channelTemplateId int, tokenTemplateName string, username string) (int, error)
 	UpdateNameAndKey     func(channelId int, templateName string, username string)
 	Delete               func(channelId int)
 	GetById              func(channelId int) string
