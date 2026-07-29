@@ -143,20 +143,27 @@ func CreateTokenConfig(c *gin.Context) {
 		return
 	}
 
-	// Auto-create channels from all channel templates
+	// Build a lookup of all token configs for this user (newly created + pre-existing)
+	allUserConfigs, _ := GetTokenConfigsByUserId(userId)
+	configByTemplateId := make(map[int]*TokenConfig, len(allUserConfigs))
+	for _, cfg := range allUserConfigs {
+		configByTemplateId[cfg.TemplateId] = cfg
+	}
+
+	// Auto-create or sync channels from all channel templates that reference one of
+	// this user's token configs. SyncFromTemplate matches by blueprint channel name
+	// and token template key prefix, so multiple channel templates sharing the same
+	// token template do not collide.
 	for _, ct := range channelTemplates {
 		if !ct.HasChannelTemplate() {
 			continue
 		}
-		channelId, err := autoCreateChannelFromChannelTemplate(createdConfigs[0], ct)
-		if err != nil {
-			common.SysError(fmt.Sprintf("failed to auto-create channel from channel template %d for user %s: %v", ct.Id, input.Username, err))
+		cfg, ok := configByTemplateId[ct.TokenTemplateId]
+		if !ok {
 			continue
 		}
-		// Update first config's channel_id for display
-		if createdConfigs[0].ChannelId == 0 {
-			createdConfigs[0].ChannelId = channelId
-			_ = db.Model(&createdConfigs[0]).Update("channel_id", channelId).Error
+		if ChannelOps.SyncFromTemplate != nil {
+			_ = ChannelOps.SyncFromTemplate(ct.ChannelTemplateId, cfg.Username)
 		}
 	}
 
@@ -164,24 +171,6 @@ func CreateTokenConfig(c *gin.Context) {
 		"success": true,
 		"data":    createdConfigs,
 	})
-}
-
-// autoCreateChannelFromChannelTemplate clones the template channel (referenced by
-// ct.ChannelTemplateId) with the user's token as the API key. The template channel
-// is a disabled Channel that serves as a blueprint — admins edit it using the
-// standard channel UI.
-func autoCreateChannelFromChannelTemplate(cfg TokenConfig, ct *ChannelTemplate) (int, error) {
-	if ChannelOps.CloneFromTemplate == nil {
-		return 0, fmt.Errorf("channel operations not initialized")
-	}
-	if ct.TokenTemplateId <= 0 {
-		return 0, fmt.Errorf("channel template %d has no token template reference", ct.Id)
-	}
-	tokenTpl, err := GetTokenTemplateById(ct.TokenTemplateId)
-	if err != nil {
-		return 0, fmt.Errorf("load token template %d for channel template %d: %w", ct.TokenTemplateId, ct.Id, err)
-	}
-	return ChannelOps.CloneFromTemplate(ct.ChannelTemplateId, tokenTpl.Name, cfg.Username)
 }
 
 // UpdateTokenConfig updates an existing token config.
@@ -234,10 +223,11 @@ func UpdateTokenConfig(c *gin.Context) {
 		return
 	}
 
-	// If username changed, update the auto-created channel name and key
-	if oldUsername != cfg.Username && cfg.ChannelId > 0 {
-		if ChannelOps.UpdateNameAndKey != nil {
-			ChannelOps.UpdateNameAndKey(cfg.ChannelId, oldUsername, getTemplateName(cfg.TemplateId), cfg.Username)
+	// If username changed, update the auto-created channel names and keys for all
+	// channel templates that reference this token template.
+	if oldUsername != cfg.Username {
+		if ChannelOps.UpdateChannelNamesForTokenTemplate != nil {
+			ChannelOps.UpdateChannelNamesForTokenTemplate(cfg.TemplateId, oldUsername, cfg.Username)
 		}
 		// Migrate cache key
 		DeleteTokenFromCache(oldUsername)
@@ -277,11 +267,10 @@ func DeleteTokenConfig(c *gin.Context) {
 		return
 	}
 
-	// Delete the auto-created channel if it exists
-	if cfg.ChannelId > 0 {
-		if ChannelOps.Delete != nil {
-			ChannelOps.Delete(cfg.ChannelId)
-		}
+	// Delete all auto-created channels derived from channel templates that use
+	// this token template.
+	if ChannelOps.DeleteChannelsForTokenTemplate != nil {
+		ChannelOps.DeleteChannelsForTokenTemplate(cfg.TemplateId)
 	}
 
 	if err := cfg.Delete(); err != nil {

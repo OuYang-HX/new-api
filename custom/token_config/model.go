@@ -20,12 +20,12 @@ type DisabledChannelItem struct {
 // These are injected by the registry package to avoid import cycles between
 // token_config and model packages.
 var ChannelOps = struct {
-	CloneFromTemplate    func(channelTemplateId int, tokenTemplateName string, username string) (int, error)
-	UpdateNameAndKey     func(channelId int, oldUsername string, tokenTemplateName string, username string)
-	Delete               func(channelId int)
-	GetById              func(channelId int) string
-	SyncFromTemplate     func(channelTemplateId int, username string) error
-	GetDisabledChannels  func() []DisabledChannelItem
+	CloneFromTemplate                    func(channelTemplateId int, tokenTemplateName string, username string) (int, error)
+	DeleteChannelsForChannelTemplate     func(channelTemplateId int, tokenTemplateId int)
+	DeleteChannelsForTokenTemplate       func(tokenTemplateId int)
+	UpdateChannelNamesForTokenTemplate   func(tokenTemplateId int, oldUsername string, newUsername string)
+	SyncFromTemplate                     func(channelTemplateId int, username string) error
+	GetDisabledChannels                  func() []DisabledChannelItem
 }{}
 
 // db is the GORM database instance, set via SetDB during initialization.

@@ -61,6 +61,22 @@ func GetAllChannelTemplates() ([]*ChannelTemplate, error) {
 	return templates, err
 }
 
+// GetChannelTemplatesByChannelTemplateId returns all channel templates that
+// reference the given disabled channel (blueprint) ID.
+func GetChannelTemplatesByChannelTemplateId(channelTemplateId int) ([]*ChannelTemplate, error) {
+	var templates []*ChannelTemplate
+	err := db.Where("channel_template_id = ?", channelTemplateId).Find(&templates).Error
+	return templates, err
+}
+
+// GetChannelTemplatesByTokenTemplateId returns all channel templates that use
+// the given token template as their token source.
+func GetChannelTemplatesByTokenTemplateId(tokenTemplateId int) ([]*ChannelTemplate, error) {
+	var templates []*ChannelTemplate
+	err := db.Where("token_template_id = ?", tokenTemplateId).Find(&templates).Error
+	return templates, err
+}
+
 // HasChannelTemplate returns true if this template references a channel template
 // that should be cloned when creating TokenConfigs.
 func (t *ChannelTemplate) HasChannelTemplate() bool {

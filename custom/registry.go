@@ -62,12 +62,12 @@ var MigrationModels struct {
 // These are set by the caller (main.go) before calling RegisterMigrations
 // to avoid import cycles between custom and model packages.
 var ChannelOperationFuncs struct {
-	CloneFromTemplate    func(channelTemplateId int, tokenTemplateName string, username string) (int, error)
-	UpdateNameAndKey     func(channelId int, oldUsername string, tokenTemplateName string, username string)
-	Delete               func(channelId int)
-	GetById              func(channelId int) string
-	SyncFromTemplate     func(channelTemplateId int, username string) error
-	GetDisabledChannels  func() []token_config.DisabledChannelItem
+	CloneFromTemplate                    func(channelTemplateId int, tokenTemplateName string, username string) (int, error)
+	DeleteChannelsForChannelTemplate     func(channelTemplateId int, tokenTemplateId int)
+	DeleteChannelsForTokenTemplate       func(tokenTemplateId int)
+	UpdateChannelNamesForTokenTemplate   func(tokenTemplateId int, oldUsername string, newUsername string)
+	SyncFromTemplate                     func(channelTemplateId int, username string) error
+	GetDisabledChannels                  func() []token_config.DisabledChannelItem
 }
 
 // RegisterMigrations appends custom model migrations to the GORM AutoMigrate list.
@@ -223,14 +223,14 @@ func initChannelOps() {
 	if ChannelOperationFuncs.CloneFromTemplate != nil {
 		token_config.ChannelOps.CloneFromTemplate = ChannelOperationFuncs.CloneFromTemplate
 	}
-	if ChannelOperationFuncs.UpdateNameAndKey != nil {
-		token_config.ChannelOps.UpdateNameAndKey = ChannelOperationFuncs.UpdateNameAndKey
+	if ChannelOperationFuncs.DeleteChannelsForChannelTemplate != nil {
+		token_config.ChannelOps.DeleteChannelsForChannelTemplate = ChannelOperationFuncs.DeleteChannelsForChannelTemplate
 	}
-	if ChannelOperationFuncs.Delete != nil {
-		token_config.ChannelOps.Delete = ChannelOperationFuncs.Delete
+	if ChannelOperationFuncs.DeleteChannelsForTokenTemplate != nil {
+		token_config.ChannelOps.DeleteChannelsForTokenTemplate = ChannelOperationFuncs.DeleteChannelsForTokenTemplate
 	}
-	if ChannelOperationFuncs.GetById != nil {
-		token_config.ChannelOps.GetById = ChannelOperationFuncs.GetById
+	if ChannelOperationFuncs.UpdateChannelNamesForTokenTemplate != nil {
+		token_config.ChannelOps.UpdateChannelNamesForTokenTemplate = ChannelOperationFuncs.UpdateChannelNamesForTokenTemplate
 	}
 	if ChannelOperationFuncs.SyncFromTemplate != nil {
 		token_config.ChannelOps.SyncFromTemplate = ChannelOperationFuncs.SyncFromTemplate

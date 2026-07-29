@@ -76,7 +76,9 @@ func UpdateChannelTemplate(c *gin.Context) {
 		return
 	}
 
-	// If channel template changed, sync all auto-created channels
+	// If channel template changed, sync all auto-created channels for the new blueprint.
+	// Channels derived from the old blueprint are left for manual cleanup; their names
+	// are based on the old blueprint name so they remain identifiable.
 	if t.HasChannelTemplate() && ChannelOps.SyncFromTemplate != nil {
 		if t.ChannelTemplateId != oldChannelTemplateId || input.ChannelTemplateId > 0 {
 			if err := ChannelOps.SyncFromTemplate(t.ChannelTemplateId, ""); err != nil {
@@ -101,22 +103,9 @@ func DeleteChannelTemplate(c *gin.Context) {
 		return
 	}
 
-	// Delete all auto-created channels linked to this template
-	if t.HasChannelTemplate() && ChannelOps.Delete != nil {
-		configs, err := GetAllTokenConfigsFromDB()
-		if err == nil {
-			for _, cfg := range configs {
-				if cfg.ChannelId > 0 {
-					// Check if this channel belongs to this template by matching template name pattern
-					// Channel name format: "<template_name>-<username>"
-					expectedPrefix := t.Name + "-"
-					if name := ChannelOps.GetById(cfg.ChannelId); name != "" && len(name) > len(expectedPrefix) && name[:len(expectedPrefix)] == expectedPrefix {
-						ChannelOps.Delete(cfg.ChannelId)
-						_ = db.Model(cfg).Update("channel_id", 0).Error
-					}
-				}
-			}
-		}
+	// Delete all auto-created channels derived from this channel template.
+	if t.HasChannelTemplate() && ChannelOps.DeleteChannelsForChannelTemplate != nil {
+		ChannelOps.DeleteChannelsForChannelTemplate(t.ChannelTemplateId, t.TokenTemplateId)
 	}
 
 	if err := t.Delete(); err != nil {
@@ -126,9 +115,8 @@ func DeleteChannelTemplate(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
-// RebuildChannelsForChannelTemplate creates channels for all TokenConfigs that don't
-// have a channel yet under this channel template. Also updates existing channels
-// with the template's current config.
+// RebuildChannelsForChannelTemplate creates channels for all TokenConfigs under this
+// channel template that don't have a derived channel yet, and updates existing ones.
 func RebuildChannelsForChannelTemplate(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
@@ -145,56 +133,18 @@ func RebuildChannelsForChannelTemplate(c *gin.Context) {
 		return
 	}
 
-	// Get all TokenConfigs
-	configs, err := GetAllTokenConfigsFromDB()
-	if err != nil {
+	if ChannelOps.SyncFromTemplate == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "channel operations not initialized"})
+		return
+	}
+
+	if err := ChannelOps.SyncFromTemplate(t.ChannelTemplateId, ""); err != nil {
 		common.ApiError(c, err)
 		return
 	}
 
-	created := 0
-	updated := 0
-	for _, cfg := range configs {
-		if cfg.ChannelId > 0 {
-			// Check if channel still exists in DB
-			var count int64
-			if err := db.Table("channels").Where("id = ?", cfg.ChannelId).Count(&count).Error; err != nil || count == 0 {
-				// Channel was deleted externally, recreate it
-				cfg.ChannelId = 0
-				channelId, err := autoCreateChannelFromChannelTemplate(*cfg, t)
-				if err != nil {
-					common.SysError(fmt.Sprintf("failed to create channel for token config %d: %v", cfg.Id, err))
-				} else {
-					cfg.ChannelId = channelId
-					_ = db.Model(cfg).Update("channel_id", channelId).Error
-					created++
-				}
-			} else {
-				// Channel exists, sync it
-				if ChannelOps.SyncFromTemplate != nil {
-					_ = ChannelOps.SyncFromTemplate(t.ChannelTemplateId, cfg.Username)
-				}
-				updated++
-			}
-		} else {
-			// No channel yet, create one
-			channelId, err := autoCreateChannelFromChannelTemplate(*cfg, t)
-			if err != nil {
-				common.SysError(fmt.Sprintf("failed to create channel for token config %d: %v", cfg.Id, err))
-			} else {
-				cfg.ChannelId = channelId
-				_ = db.Model(cfg).Update("channel_id", channelId).Error
-				created++
-			}
-		}
-	}
-
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"message": fmt.Sprintf("Created %d channels, updated %d channels", created, updated),
-		"data": gin.H{
-			"created": created,
-			"updated": updated,
-		},
+		"message": "Channels rebuilt",
 	})
 }
