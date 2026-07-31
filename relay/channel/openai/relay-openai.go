@@ -125,7 +125,15 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 	// 检查是否为音频模型
 	isAudioModel := strings.Contains(strings.ToLower(model), "audio")
 
+	var streamErr *types.NewAPIError
+
 	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
+		if err := checkStreamDataError(resp.StatusCode, data); err != nil {
+			streamErr = err
+			sr.Stop(err.Err)
+			return
+		}
+
 		if lastStreamData != "" {
 			if err := HandleStreamFormat(c, info, lastStreamData, info.ChannelSetting.ForceFormat, info.ChannelSetting.ThinkingToContent); err != nil {
 				common.SysLog("error handling stream format: " + err.Error())
@@ -146,6 +154,10 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 			}
 		}
 	})
+
+	if streamErr != nil {
+		return nil, streamErr
+	}
 
 	// 对音频模型，从倒数第二个stream data中提取usage信息
 	if isAudioModel && secondLastStreamData != "" {
@@ -402,6 +414,24 @@ func OpenaiHandlerWithUsage(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 	applyUsagePostProcessing(info, &usageResp.Usage, responseBody)
 	return &usageResp.Usage, nil
 }
+
+// checkStreamDataError detects non-standard error fields (error_code/error_msg) in a
+// single stream chunk. If found, it remaps a 2xx status code to the appropriate HTTP
+// status so the controller retry logic handles it like a normal upstream error.
+func checkStreamDataError(statusCode int, data string) *types.NewAPIError {
+	var streamResp dto.ChatCompletionsStreamResponse
+	if err := common.UnmarshalJsonStr(data, &streamResp); err != nil {
+		return nil
+	}
+	if oaiErr := streamResp.GetOpenAIError(); oaiErr != nil && oaiErr.Type != "" {
+		if statusCode >= 200 && statusCode < 300 {
+			statusCode = openAIErrorTypeToStatusCode(oaiErr.Type, statusCode)
+		}
+		return types.WithOpenAIError(*oaiErr, statusCode)
+	}
+	return nil
+}
+
 // openAIErrorTypeToStatusCode maps OpenAI error types to appropriate HTTP status codes
 // when the upstream returns HTTP 200 but the response body contains an error.
 // This allows the retry logic in shouldRetry() to make correct decisions.
