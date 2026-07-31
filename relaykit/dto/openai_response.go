@@ -3,6 +3,9 @@ package dto
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"regexp"
+	"strconv"
 
 	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
 	"github.com/QuantumNous/new-api/relaykit/types"
@@ -13,13 +16,15 @@ const (
 )
 
 type SimpleResponse struct {
-	Usage `json:"usage"`
-	Error any `json:"error"`
+	Usage     `json:"usage"`
+	Error     any    `json:"error"`
+	ErrorCode string `json:"error_code,omitempty"`
+	ErrorMsg  string `json:"error_msg,omitempty"`
 }
 
 // GetOpenAIError 从动态错误类型中提取OpenAIError结构
 func (s *SimpleResponse) GetOpenAIError() *types.OpenAIError {
-	return GetOpenAIError(s.Error)
+	return getOpenAIErrorFromFields(s.Error, s.ErrorCode, s.ErrorMsg)
 }
 
 type TextResponse struct {
@@ -38,18 +43,85 @@ type OpenAITextResponseChoice struct {
 }
 
 type OpenAITextResponse struct {
-	Id      string                     `json:"id"`
-	Model   string                     `json:"model"`
-	Object  string                     `json:"object"`
-	Created any                        `json:"created"`
-	Choices []OpenAITextResponseChoice `json:"choices"`
-	Error   any                        `json:"error,omitempty"`
-	Usage   `json:"usage"`
+	Id        string                     `json:"id"`
+	Model     string                     `json:"model"`
+	Object    string                     `json:"object"`
+	Created   any                        `json:"created"`
+	Choices   []OpenAITextResponseChoice `json:"choices"`
+	Error     any                        `json:"error,omitempty"`
+	ErrorCode string                     `json:"error_code,omitempty"`
+	ErrorMsg  string                     `json:"error_msg,omitempty"`
+	Usage     `json:"usage"`
 }
 
 // GetOpenAIError 从动态错误类型中提取OpenAIError结构
 func (o *OpenAITextResponse) GetOpenAIError() *types.OpenAIError {
-	return GetOpenAIError(o.Error)
+	return getOpenAIErrorFromFields(o.Error, o.ErrorCode, o.ErrorMsg)
+}
+
+// getOpenAIErrorFromFields 优先从标准 error 字段解析错误；如果为空，则解析 error_code 和 error_msg。
+// error_code 中可能包含 HTTP 状态码（如 ".429"），用于将 HTTP 200 响应映射为可重试状态码。
+// error_msg 直接作为错误消息，不再解析其内部 JSON 结构。
+func getOpenAIErrorFromFields(errorField any, errorCode, errorMsg string) *types.OpenAIError {
+	if errorField != nil {
+		return GetOpenAIError(errorField)
+	}
+	if errorCode == "" && errorMsg == "" {
+		return nil
+	}
+	errType := "error"
+	if statusCode := extractStatusCodeFromErrorCode(errorCode); statusCode != 0 {
+		errType = statusCodeToOpenAIErrorType(statusCode)
+	}
+	codeVal := errorCode
+	if codeVal == "" {
+		codeVal = "error"
+	}
+	return &types.OpenAIError{
+		Message: errorMsg,
+		Type:    errType,
+		Code:    codeVal,
+	}
+}
+
+// extractStatusCodeFromErrorCode 从 error_code 字符串中提取最后的 3 位 HTTP 状态码。
+// 例如 "InferHub.002002010.429" -> 429。
+func extractStatusCodeFromErrorCode(code string) int {
+	if code == "" {
+		return 0
+	}
+	re := regexp.MustCompile(`\d{3}`)
+	matches := re.FindAllString(code, -1)
+	if len(matches) == 0 {
+		return 0
+	}
+	last := matches[len(matches)-1]
+	status, _ := strconv.Atoi(last)
+	if status >= 100 && status <= 599 {
+		return status
+	}
+	return 0
+}
+
+// statusCodeToOpenAIErrorType 将 HTTP 状态码映射为 OpenAI 风格的错误类型名，
+// 以便复用 relay/channel/openai 中 openAIErrorTypeToStatusCode() 的映射逻辑。
+func statusCodeToOpenAIErrorType(code int) string {
+	switch code {
+	case http.StatusBadRequest:
+		return "invalid_request_error"
+	case http.StatusUnauthorized:
+		return "authentication_error"
+	case http.StatusForbidden:
+		return "permission_error"
+	case http.StatusNotFound:
+		return "not_found_error"
+	case http.StatusTooManyRequests:
+		return "rate_limit_error"
+	case http.StatusServiceUnavailable:
+		return "server_error"
+	default:
+		return "upstream_error"
+	}
 }
 
 type OpenAIEmbeddingResponseItem struct {
@@ -147,6 +219,12 @@ type ChatCompletionsStreamResponse struct {
 	SystemFingerprint *string                               `json:"system_fingerprint"`
 	Choices           []ChatCompletionsStreamResponseChoice `json:"choices"`
 	Usage             *Usage                                `json:"usage"`
+	ErrorCode         string                                `json:"error_code,omitempty"`
+	ErrorMsg          string                                `json:"error_msg,omitempty"`
+}
+
+func (c *ChatCompletionsStreamResponse) GetOpenAIError() *types.OpenAIError {
+	return getOpenAIErrorFromFields(nil, c.ErrorCode, c.ErrorMsg)
 }
 
 func (c *ChatCompletionsStreamResponse) IsFinished() bool {
