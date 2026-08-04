@@ -17,10 +17,10 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/custom" // custom-hook: decoupled extensions
-	"github.com/QuantumNous/new-api/custom/codex" // custom-hook: codex scheduler injection
-	"github.com/QuantumNous/new-api/custom/token_config" // custom-hook: token config channel ops
 	"github.com/QuantumNous/new-api/controller"
+	"github.com/QuantumNous/new-api/custom"              // custom-hook: decoupled extensions
+	"github.com/QuantumNous/new-api/custom/codex"        // custom-hook: codex scheduler injection
+	"github.com/QuantumNous/new-api/custom/token_config" // custom-hook: token config channel ops
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/middleware"
@@ -413,6 +413,7 @@ func InitResources() error {
 //   - Name set to "<template_channel_name>-<username>"
 //   - Status set to enabled (1)
 //   - HeaderOverride: ${token:self} replaced with ${token:<username>}
+//
 // This function lives in main to avoid import cycles (custom -> model -> custom).
 func cloneChannelFromTemplate(channelTemplateId int, tokenTemplateName string, username string) (int, error) {
 	tmpl, err := model.GetChannelById(channelTemplateId, true)
@@ -421,7 +422,7 @@ func cloneChannelFromTemplate(channelTemplateId int, tokenTemplateName string, u
 	}
 
 	channel := *tmpl // shallow copy all fields
-	channel.Id = 0    // let GORM auto-generate
+	channel.Id = 0   // let GORM auto-generate
 	// Key references the token template so it matches the token cache key;
 	// Name uses the channel template (blueprint) name for display.
 	channel.Key = fmt.Sprintf("${token:%s:%s}", tokenTemplateName, username)
@@ -498,9 +499,11 @@ func deleteChannelsForChannelTemplate(channelTemplateId int, tokenTemplateId int
 	_ = model.DB.Where("name LIKE ? AND key LIKE ?", namePattern, keyPattern).Delete(&model.Channel{})
 }
 
-// deleteChannelsForTokenTemplate deletes all auto-created channels derived from any
-// channel template that uses the given token template.
-func deleteChannelsForTokenTemplate(tokenTemplateId int) {
+// deleteChannelsForTokenTemplate deletes the auto-created channel for the given user
+// from any channel template that uses the given token template. The channel is matched
+// by the exact blueprint name + username and key pattern, so other users' channels
+// under the same token template are left untouched.
+func deleteChannelsForTokenTemplate(tokenTemplateId int, username string) {
 	channelTemplates, err := token_config.GetChannelTemplatesByTokenTemplateId(tokenTemplateId)
 	if err != nil {
 		common.SysError(fmt.Sprintf("deleteChannelsForTokenTemplate: load channel templates: %v", err))
@@ -512,9 +515,9 @@ func deleteChannelsForTokenTemplate(tokenTemplateId int) {
 		if err != nil {
 			continue
 		}
-		namePattern := tmpl.Name + "-%"
-		keyPattern := "${token:" + tokenTemplateName + ":%"
-		_ = model.DB.Where("name LIKE ? AND key LIKE ?", namePattern, keyPattern).Delete(&model.Channel{})
+		name := tmpl.Name + "-" + username
+		key := "${token:" + tokenTemplateName + ":" + username + "}"
+		_ = model.DB.Where("name = ? AND key = ?", name, key).Delete(&model.Channel{})
 	}
 }
 

@@ -25,18 +25,18 @@ var RouteHandlers struct {
 	// Codex channel credential refresh (gin handler wrapper)
 	RefreshCodexChannelCredential func(c *gin.Context)
 	// Codex OAuth
-	StartCodexOAuth           func(c *gin.Context)
-	CompleteCodexOAuth        func(c *gin.Context)
-	StartCodexOAuthForChannel func(c *gin.Context)
+	StartCodexOAuth              func(c *gin.Context)
+	CompleteCodexOAuth           func(c *gin.Context)
+	StartCodexOAuthForChannel    func(c *gin.Context)
 	CompleteCodexOAuthForChannel func(c *gin.Context)
-	GetCodexChannelUsage      func(c *gin.Context)
+	GetCodexChannelUsage         func(c *gin.Context)
 	// Custom OAuth Provider CRUD
-	FetchCustomOAuthDiscovery  func(c *gin.Context)
-	GetCustomOAuthProviders    func(c *gin.Context)
-	GetCustomOAuthProvider     func(c *gin.Context)
-	CreateCustomOAuthProvider  func(c *gin.Context)
-	UpdateCustomOAuthProvider  func(c *gin.Context)
-	DeleteCustomOAuthProvider  func(c *gin.Context)
+	FetchCustomOAuthDiscovery func(c *gin.Context)
+	GetCustomOAuthProviders   func(c *gin.Context)
+	GetCustomOAuthProvider    func(c *gin.Context)
+	CreateCustomOAuthProvider func(c *gin.Context)
+	UpdateCustomOAuthProvider func(c *gin.Context)
+	DeleteCustomOAuthProvider func(c *gin.Context)
 	// User OAuth Binding
 	GetUserOAuthBindings        func(c *gin.Context)
 	GetUserOAuthBindingsByAdmin func(c *gin.Context)
@@ -62,12 +62,12 @@ var MigrationModels struct {
 // These are set by the caller (main.go) before calling RegisterMigrations
 // to avoid import cycles between custom and model packages.
 var ChannelOperationFuncs struct {
-	CloneFromTemplate                    func(channelTemplateId int, tokenTemplateName string, username string) (int, error)
-	DeleteChannelsForChannelTemplate     func(channelTemplateId int, tokenTemplateId int)
-	DeleteChannelsForTokenTemplate       func(tokenTemplateId int)
-	UpdateChannelNamesForTokenTemplate   func(tokenTemplateId int, oldUsername string, newUsername string)
-	SyncFromTemplate                     func(channelTemplateId int, username string) error
-	GetDisabledChannels                  func() []token_config.DisabledChannelItem
+	CloneFromTemplate                  func(channelTemplateId int, tokenTemplateName string, username string) (int, error)
+	DeleteChannelsForChannelTemplate   func(channelTemplateId int, tokenTemplateId int)
+	DeleteChannelsForTokenTemplate     func(tokenTemplateId int, username string)
+	UpdateChannelNamesForTokenTemplate func(tokenTemplateId int, oldUsername string, newUsername string)
+	SyncFromTemplate                   func(channelTemplateId int, username string) error
+	GetDisabledChannels                func() []token_config.DisabledChannelItem
 }
 
 // RegisterMigrations appends custom model migrations to the GORM AutoMigrate list.
