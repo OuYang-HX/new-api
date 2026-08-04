@@ -41,11 +41,19 @@ func (tc *TokenCache) Set(key string, value string) {
 	tc.cache[key] = value
 }
 
-// Delete removes the token for the given key.
-func (tc *TokenCache) Delete(key string) {
+// DeleteByUser removes all cache entries for the given username. Cache keys follow
+// the "templateName:username" format, so deleting a token config must evict every
+// template-scoped entry for that user; bare-username keys (legacy format) are also
+// evicted.
+func (tc *TokenCache) DeleteByUser(username string) {
 	tc.mu.Lock()
 	defer tc.mu.Unlock()
-	delete(tc.cache, key)
+	suffix := ":" + username
+	for key := range tc.cache {
+		if key == username || strings.HasSuffix(key, suffix) {
+			delete(tc.cache, key)
+		}
+	}
 }
 
 // ResolveTokenVariables replaces all ${token:templateName:username} patterns in value
@@ -332,7 +340,9 @@ func truncateString(s string, maxLen int) string {
 	return s[:maxLen] + "..."
 }
 
-// DeleteTokenFromCache removes a token from the in-memory cache by userId and config name.
+// DeleteTokenFromCache removes all cached tokens for the given username from the
+// in-memory cache. Cache keys follow the "templateName:username" format, so every
+// template-scoped entry for this user is evicted.
 func DeleteTokenFromCache(username string) {
-	globalTokenCache.Delete(username)
+	globalTokenCache.DeleteByUser(username)
 }
