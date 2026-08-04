@@ -267,10 +267,11 @@ func DeleteTokenConfig(c *gin.Context) {
 		return
 	}
 
-	// Delete all auto-created channels derived from channel templates that use
-	// this token template.
+	// Delete the auto-created channel derived for this user from channel templates
+	// that use this token template. Other users' channels under the same token
+	// template are left untouched.
 	if ChannelOps.DeleteChannelsForTokenTemplate != nil {
-		ChannelOps.DeleteChannelsForTokenTemplate(cfg.TemplateId)
+		ChannelOps.DeleteChannelsForTokenTemplate(cfg.TemplateId, cfg.Username)
 	}
 
 	if err := cfg.Delete(); err != nil {
