@@ -658,7 +658,10 @@ func validateTestResponseBody(respBody []byte, isStream bool) error {
 }
 
 func shouldUseStreamForAutomaticChannelTest(channel *model.Channel) bool {
-	return channel != nil && channel.Type == constant.ChannelTypeCodex
+	// Use streaming for all channels during scheduled health checks:
+	// some upstream models only respond via stream and fail under
+	// non-streaming test requests, which would cause false disable.
+	return channel != nil
 }
 
 func detectErrorMessageFromJSONBytes(jsonBytes []byte) string {
