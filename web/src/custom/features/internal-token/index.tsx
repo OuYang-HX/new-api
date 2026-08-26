@@ -42,6 +42,7 @@ import {
 } from './api'
 import type { TokenConfig, TokenConfigFormData } from './types'
 import { useAuthStore } from '@/stores/auth-store'
+import { ROLE } from '@/lib/roles'
 
 const EMPTY_FORM: TokenConfigFormData = {
   username: '',
@@ -65,6 +66,7 @@ export function InternalToken() {
   const queryClient = useQueryClient()
   const { auth } = useAuthStore()
   const currentUserId = auth.user?.id ?? 0
+  const isAdmin = auth.user?.role != null && auth.user.role >= ROLE.ADMIN
 
   // Data fetching
   const { data: configsData, isLoading } = useQuery({
@@ -246,7 +248,7 @@ export function InternalToken() {
                   </TableCell>
                   <TableCell className='text-right'>
                     <div className='flex items-center justify-end gap-1'>
-                      {revealAllowed && row.user_id === currentUserId && (
+                      {revealAllowed && (row.user_id === currentUserId || isAdmin) && (
                         <Button
                           variant='ghost'
                           size='icon'
@@ -263,7 +265,7 @@ export function InternalToken() {
                           {revealedIds.has(row.id) ? <EyeOff className='h-4 w-4' /> : <Eye className='h-4 w-4' />}
                         </Button>
                       )}
-                      {row.user_id === currentUserId && (
+                      {(row.user_id === currentUserId || isAdmin) && (
                         <>
                           <Button
                             variant='ghost'
