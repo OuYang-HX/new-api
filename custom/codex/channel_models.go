@@ -10,7 +10,6 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/setting/ratio_setting"
 )
 
 func FetchCodexChannelModels(channel *model.Channel) ([]string, error) {

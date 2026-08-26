@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -260,7 +261,7 @@ func xunfeiMakeRequest(textRequest dto.GeneralOpenAIRequest, domain, authUrl, ap
 					statusCode = http.StatusBadRequest
 				}
 				errChan <- types.NewErrorWithStatusCode(
-					fmt.Errorf(errMsg),
+					errors.New(errMsg),
 					types.ErrorCodeBadResponse,
 					statusCode,
 					types.ErrOptionWithSkipRetry(),
